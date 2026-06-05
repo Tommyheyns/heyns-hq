@@ -628,6 +628,16 @@ async function doAddToken(pi,name,pt){
   ng.battlefield[pi]=[...ng.battlefield[pi],{isToken:true,tokenName:name,pt,instanceId:uid()}];
   await updateGS(ng);
 }
+window.resetTable=async()=>{
+  if(!currentRoom)return;
+  if(!confirm('Reset this table? This will clear the game and format.'))return;
+  await setDoc(doc(db,'rooms',currentRoom.id),{id:currentRoom.id,players:[],spectators:[],status:'empty',format:null,gameState:null});
+  if(roomUnsub){roomUnsub();roomUnsub=null;}
+  currentRoom=null;
+  if(currentUser)setDoc(doc(db,'online',currentUser.uid),{uid:currentUser.uid,username:currentProfile.username,at:'lobby',ts:Date.now()});
+  showScreen('rooms');loadRooms();
+  toast('Table reset!');
+};
 window.leaveRoom=async()=>{
   if(roomUnsub){roomUnsub();roomUnsub=null;}
   if(currentRoom){
@@ -1055,7 +1065,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .room-tab.active{color:var(--gold);border-bottom-color:var(--gold);}
 .room-view{display:none;flex:1;overflow-y:auto;flex-direction:column;}
 .room-view.active{display:flex;}
-#rv-board{padding:8px;gap:6px;}
+#rv-board{padding:8px;gap:6px;padding-bottom:80px;}
 .board-section{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;}
 .zone-row{display:flex;gap:6px;align-items:flex-start;}
 .zone-col{display:flex;flex-direction:column;gap:4px;align-items:center;flex-shrink:0;}
@@ -1075,7 +1085,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .token-chip{width:50px;height:50px;border-radius:6px;background:var(--bg4);border:1px solid var(--border2);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:8px;color:var(--text);cursor:pointer;text-align:center;padding:2px;flex-shrink:0;}
 .token-pt{font-family:'Cinzel',serif;font-size:12px;color:var(--gold);}
 .stack-btn{font-size:8px;color:var(--muted);background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:2px 5px;cursor:pointer;width:100%;}
-.board-controls{display:flex;gap:6px;flex-wrap:wrap;padding:6px;flex-shrink:0;}
+.board-controls{display:flex;gap:6px;flex-wrap:wrap;padding:8px;flex-shrink:0;position:sticky;bottom:0;background:var(--bg2);border-top:1px solid var(--border2);z-index:10;}
 .ctrl-btn{flex:1;min-width:80px;padding:8px 6px;font-family:'Cinzel',serif;font-size:9px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--border2);color:var(--muted);border-radius:8px;cursor:pointer;text-align:center;}
 .ctrl-btn.primary{border-color:var(--gold-dim);color:var(--gold);}
 .ctrl-btn:active{border-color:var(--gold-dim);}
@@ -1313,6 +1323,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <div style="font-size:10px;background:var(--bg4);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;color:var(--muted)" id="room-role-badge">Playing</div>
       <button class="icon-btn" onclick="goHome()">🏠</button>
       <button class="icon-btn" onclick="leaveRoom()">Leave</button>
+      <button class="icon-btn" onclick="resetTable()" style="border-color:#5a1a1a;color:var(--red)">Reset</button>
     </div>
   </div>
   <div class="room-tabs">
