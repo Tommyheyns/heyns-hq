@@ -8,11 +8,10 @@
 <meta name="apple-mobile-web-app-title" content="Heyns HQ">
 <title>Heyns HQ</title>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
-
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBAZbkmK4LOMKXwzv5CHDEI74GHAfX1A_I",
@@ -27,145 +26,423 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// ── Globals ──────────────────────────────────────────────────────────────────
-let currentUser = null, currentProfile = null, currentRoom = null, roomUnsub = null;
-let rulesHistory = [];
-let buildingDeck = [], editingDeckIdx = -1;
-let draftState = null; // { theme, packs: [[cards]], currentPack, picks: [] }
+let currentUser=null, currentProfile=null, currentRoom=null, roomUnsub=null, draftUnsub=null;
+let rulesHistory=[], buildingDeck=[], editingDeckIdx=-1;
+let activeColors=[], activeTypes=[], activeCmc='';
+let zoomCard=null, zoomMode='builder';
 
-const uid = () => Math.random().toString(36).slice(2);
-const imgUrl = c => c?.image_uris?.normal || c?.card_faces?.[0]?.image_uris?.normal || '';
-const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
+const uid=()=>Math.random().toString(36).slice(2);
+const imgUrl=c=>c?.image_uris?.normal||c?.card_faces?.[0]?.image_uris?.normal||'';
+const shuffle=arr=>{const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
 
-// ── Auth state ────────────────────────────────────────────────────────────────
-onAuthStateChanged(auth, async user => {
-  if (user) {
-    currentUser = user;
-    const snap = await getDoc(doc(db,'users',user.uid));
-    currentProfile = snap.exists() ? snap.data() : { uid:user.uid, username:user.email.split('@')[0], decks:[], collection:[] };
-    if (!snap.exists()) await setDoc(doc(db,'users',user.uid), currentProfile);
-    showScreen('lobby'); loadLobby();
+// Auth
+onAuthStateChanged(auth,async user=>{
+  if(user){
+    currentUser=user;
+    const snap=await getDoc(doc(db,'users',user.uid));
+    currentProfile=snap.exists()?snap.data():{uid:user.uid,username:user.email.split('@')[0],decks:[],collection:[]};
+    if(!snap.exists()) await setDoc(doc(db,'users',user.uid),currentProfile);
+    await setDoc(doc(db,'online',user.uid),{uid:user.uid,username:currentProfile.username,at:'lobby',ts:Date.now()});
+    goHome();
   } else {
-    currentUser = null; currentProfile = null;
-    showScreen('auth');
+    currentUser=null;currentProfile=null;showScreen('auth');
   }
 });
 
-// ── Screen nav ────────────────────────────────────────────────────────────────
-window.showScreen = name => {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  const el = document.getElementById('screen-'+name);
-  if (el) el.classList.add('active');
+window.showAuthTab=tab=>{
+  document.getElementById('auth-login').style.display=tab==='login'?'flex':'none';
+  document.getElementById('auth-register').style.display=tab==='register'?'flex':'none';
+  document.querySelectorAll('.auth-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
 };
-window.goHome = () => { showScreen('lobby'); loadLobby(); };
-window.goToMyDecks = () => { showScreen('mydecks'); renderMyDecks(); };
-
-// Draft card zoom (separate from builder zoom so pick button works)
-let draftZoomCard = null, draftZoomIdx = -1;
-window.showDraftCardZoom = (card, idx) => {
-  draftZoomCard = card; draftZoomIdx = idx;
-  document.getElementById('zoom-img').src = imgUrl(card);
-  document.getElementById('zoom-name').textContent = card.name;
-  document.getElementById('zoom-type').textContent = card.type_line || '';
-  document.getElementById('zoom-text').textContent = card.oracle_text || card.card_faces?.[0]?.oracle_text || '';
-  document.getElementById('zoom-pt').textContent = card.power ? `${card.power}/${card.toughness}` : '';
-  document.getElementById('zoom-add-btn').style.display = 'none';
-  document.getElementById('zoom-save-btn').style.display = 'none';
-  document.getElementById('zoom-pick-btn').style.display = 'block';
-  document.getElementById('card-zoom').style.display = 'flex';
+window.doLogin=async()=>{
+  const email=document.getElementById('login-email').value.trim();
+  const pw=document.getElementById('login-pw').value;
+  if(!email||!pw) return toast('Fill in all fields',true);
+  try{await signInWithEmailAndPassword(auth,email,pw);}catch{toast('Invalid email or password',true);}
 };
-window.zoomPickDraftCard = () => {
-  if (draftZoomCard === null) return;
-  closeZoom();
-  draftPickCard(draftZoomCard, draftZoomIdx);
+window.doRegister=async()=>{
+  const username=document.getElementById('reg-username').value.trim();
+  const email=document.getElementById('reg-email').value.trim();
+  const pw=document.getElementById('reg-pw').value;
+  if(!username||!email||!pw) return toast('Fill in all fields',true);
+  try{
+    const cred=await createUserWithEmailAndPassword(auth,email,pw);
+    await setDoc(doc(db,'users',cred.user.uid),{uid:cred.user.uid,username,email,decks:[],collection:[],createdAt:Date.now()});
+    toast('Account created!');
+  }catch(e){toast(e.message,true);}
 };
-
-// ── Auth ──────────────────────────────────────────────────────────────────────
-window.showAuthTab = tab => {
-  document.getElementById('auth-login').style.display = tab==='login'?'flex':'none';
-  document.getElementById('auth-register').style.display = tab==='register'?'flex':'none';
-  document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
-};
-window.doLogin = async () => {
-  const email = document.getElementById('login-email').value.trim();
-  const pw = document.getElementById('login-pw').value;
-  if (!email||!pw) return showToast('Fill in all fields',true);
-  try { await signInWithEmailAndPassword(auth,email,pw); }
-  catch(e) { showToast('Invalid email or password',true); }
-};
-window.doRegister = async () => {
-  const username = document.getElementById('reg-username').value.trim();
-  const email = document.getElementById('reg-email').value.trim();
-  const pw = document.getElementById('reg-pw').value;
-  if (!username||!email||!pw) return showToast('Fill in all fields',true);
-  try {
-    const cred = await createUserWithEmailAndPassword(auth,email,pw);
-    await setDoc(doc(db,'users',cred.user.uid),{ uid:cred.user.uid, username, email, decks:[], collection:[], createdAt:Date.now() });
-    showToast('Account created!');
-  } catch(e) { showToast(e.message,true); }
-};
-window.doLogout = async () => {
-  if (roomUnsub){roomUnsub();roomUnsub=null;}
+window.doLogout=async()=>{
+  if(currentUser) await setDoc(doc(db,'online',currentUser.uid),{uid:currentUser.uid,username:currentProfile?.username,at:'offline',ts:Date.now()});
+  if(roomUnsub){roomUnsub();roomUnsub=null;}
+  if(draftUnsub){draftUnsub();draftUnsub=null;}
   await signOut(auth);
 };
 
-// ── Lobby ─────────────────────────────────────────────────────────────────────
-async function loadLobby() {
-  document.getElementById('lobby-username').textContent = currentProfile.username;
-  document.getElementById('lobby-deck-count').textContent = (currentProfile.decks||[]).length;
-  renderLobbyRooms();
-}
-async function renderLobbyRooms() {
-  const c = document.getElementById('lobby-rooms'); c.innerHTML='';
-  for (let i=1;i<=4;i++) {
-    const snap = await getDoc(doc(db,'rooms',`table-${i}`));
-    const room = snap.exists() ? snap.data() : {players:[],spectators:[],status:'empty',format:'standard'};
-    const d = document.createElement('div'); d.className='room-card';
-    const sc = room.status==='playing'?'#5ae07a':room.status==='waiting'?'#c8a84b':'#555';
-    const p1=room.players?.[0]?.username||'—', p2=room.players?.[1]?.username||'—';
-    d.innerHTML=`<div class="room-name">Table ${i}</div>
-      <div style="font-size:11px;color:${sc};margin:3px 0">● ${room.status==='playing'?'In Game':room.status==='waiting'?'Waiting':'Open'}</div>
-      <div style="font-size:13px;margin-bottom:4px">${p1} vs ${p2}</div>
-      <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:8px">${(room.format||'standard').toUpperCase()} · ${(room.spectators||[]).length} watching</div>
-      <div style="display:flex;gap:8px">
-        <button class="room-btn" onclick="joinRoom('table-${i}','player')">▶ Play</button>
-        <button class="room-btn" style="border-color:var(--border2);color:var(--muted)" onclick="joinRoom('table-${i}','spectator')">👁 Watch</button>
-      </div>`;
-    c.appendChild(d);
-  }
-}
-window.joinRoom = async (roomId, role) => {
-  const snap = await getDoc(doc(db,'rooms',roomId));
-  let room = snap.exists() ? snap.data() : {id:roomId,players:[],spectators:[],status:'empty',format:'standard',gameState:null};
-  if (role==='player') {
-    if ((room.players||[]).length>=2) return showToast('Table is full!',true);
-    if (!(room.players||[]).find(p=>p.uid===currentUser.uid))
-      room.players=[...(room.players||[]),{uid:currentUser.uid,username:currentProfile.username}];
-    room.status='waiting';
-  } else {
-    if (!(room.spectators||[]).find(p=>p.uid===currentUser.uid))
-      room.spectators=[...(room.spectators||[]),{uid:currentUser.uid,username:currentProfile.username}];
-  }
-  await setDoc(doc(db,'rooms',roomId),room);
-  currentRoom={id:roomId,role};
-  enterRoom(roomId,role);
+// Navigation
+window.showScreen=name=>{
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  const el=document.getElementById('screen-'+name);
+  if(el) el.classList.add('active');
+};
+window.goHome=()=>{
+  showScreen('home');
+  document.getElementById('home-username').textContent=currentProfile?.username||'';
+};
+window.goToLibrary=()=>{showScreen('library');showLibTab('search');};
+window.goToRooms=()=>{showScreen('rooms');loadRooms();};
+window.goToWhoPlaying=()=>{showScreen('whoplaying');loadWhoPlaying();};
+
+// Library tabs
+window.showLibTab=tab=>{
+  document.querySelectorAll('.lib-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  document.querySelectorAll('.lib-view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('lv-'+tab).classList.add('active');
+  if(tab==='decks') renderMyDecks();
+  if(tab==='collection') renderCollection();
 };
 
-// ── Room ──────────────────────────────────────────────────────────────────────
-function enterRoom(roomId,role) {
-  showScreen('room');
-  document.getElementById('room-role-badge').textContent = role==='spectator'?'👁 Spectating':'▶ Playing';
-  document.getElementById('room-title').textContent = roomId.replace('-',' ').replace(/\b\w/g,c=>c.toUpperCase());
-  if (roomUnsub) roomUnsub();
-  roomUnsub = onSnapshot(doc(db,'rooms',roomId), snap => { if(snap.exists()) renderRoom(snap.data(),role); });
-  switchRoomTab('board');
+// Filters
+window.toggleColor=c=>{activeColors=activeColors.includes(c)?activeColors.filter(x=>x!==c):[...activeColors,c];updateFilterUI();};
+window.toggleType=t=>{activeTypes=activeTypes.includes(t)?activeTypes.filter(x=>x!==t):[...activeTypes,t];updateFilterUI();};
+window.toggleCmc=c=>{activeCmc=activeCmc===c?'':c;updateFilterUI();};
+function updateFilterUI(){
+  document.querySelectorAll('.color-btn').forEach(b=>b.classList.toggle('active',activeColors.includes(b.dataset.c)));
+  document.querySelectorAll('.type-btn').forEach(b=>b.classList.toggle('active',activeTypes.includes(b.dataset.t)));
+  document.querySelectorAll('.cmc-btn').forEach(b=>b.classList.toggle('active',activeCmc===b.dataset.cmc));
 }
-function renderRoom(room,role) {
-  const p1=room.players?.[0], p2=room.players?.[1];
-  document.getElementById('room-p1-name').textContent = p1?.username||'Waiting…';
-  document.getElementById('room-p2-name').textContent = p2?.username||'Waiting…';
+
+window.searchCards=async(resultElId,mode)=>{
+  const q=document.getElementById('search-inp-'+mode).value.trim();
+  let query=q||'*';
+  if(activeColors.length>0) query+=` color:${activeColors.join('')}`;
+  if(activeTypes.length>0) query+=` type:${activeTypes.join(' type:')}`;
+  if(activeCmc) query+=` cmc:${activeCmc}`;
+  const el=document.getElementById(resultElId);
+  el.innerHTML='<span style="color:var(--muted);font-size:12px">Searching…</span>';
+  try{
+    const r=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&unique=cards&order=name&page=1`);
+    const d=await r.json();
+    el.innerHTML='';
+    (d.data||[]).slice(0,50).forEach(card=>{
+      const url=imgUrl(card);if(!url)return;
+      const wrap=document.createElement('div');wrap.className='result-wrap';
+      wrap.innerHTML=`<img src="${url}" class="result-card" loading="lazy" alt="${card.name}">`;
+      wrap.querySelector('img').onclick=()=>showCardZoom(card,mode);
+      el.appendChild(wrap);
+    });
+    if((d.data||[]).length===0) el.innerHTML='<span style="color:var(--muted);font-size:12px">No results.</span>';
+  }catch{el.innerHTML='<span style="color:var(--red);font-size:12px">Search failed</span>';}
+};
+
+// Collection
+async function renderCollection(){
+  const el=document.getElementById('coll-saved');
+  const coll=currentProfile.collection||[];
+  document.getElementById('coll-count').textContent=coll.length;
+  el.innerHTML='';
+  coll.forEach(card=>{
+    const url=imgUrl(card);
+    const wrap=document.createElement('div');wrap.className='result-wrap';wrap.style.position='relative';
+    wrap.innerHTML=`<img src="${url}" class="result-card" loading="lazy"><div class="remove-badge" onclick="removeFromColl('${card.id}')">✕</div>`;
+    wrap.querySelector('img').onclick=()=>showCardZoom(card,'collection');
+    el.appendChild(wrap);
+  });
+}
+window.removeFromColl=async id=>{
+  currentProfile.collection=(currentProfile.collection||[]).filter(c=>c.id!==id);
+  await setDoc(doc(db,'users',currentUser.uid),currentProfile);renderCollection();
+};
+
+// My Decks
+function renderMyDecks(){
+  const decks=currentProfile.decks||[];
+  document.getElementById('decks-count').textContent=`${decks.length} deck${decks.length!==1?'s':''}`;
+  const el=document.getElementById('decks-list');el.innerHTML='';
+  if(decks.length===0){el.innerHTML='<p style="color:var(--muted);font-size:14px;text-align:center;padding:20px">No decks yet.</p>';return;}
+  decks.forEach((deck,i)=>{
+    const selected=currentProfile.selectedDeckIdx===i;
+    const d=document.createElement('div');d.className='deck-row'+(selected?' selected':'');
+    d.innerHTML=`<div style="flex:1">
+      <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">${deck.name}</div>
+      <div style="font-size:11px;color:var(--muted)">${deck.cards?.length||0} cards · ${deck.format==='commander'?'Commander':'Standard'}${deck.aiBuilt?' · 🤖':''}</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn-sm${selected?' active':''}" onclick="selectDeck(${i})">${selected?'✓ Active':'Use'}</button>
+      <button class="btn-sm" onclick="editDeck(${i})">✎</button>
+      <button class="btn-sm danger" onclick="deleteDeck(${i})">✕</button>
+    </div>`;
+    el.appendChild(d);
+  });
+}
+window.selectDeck=async i=>{
+  currentProfile.selectedDeckIdx=i;currentProfile.selectedDeck=currentProfile.decks[i].cards;
+  await setDoc(doc(db,'users',currentUser.uid),currentProfile);
+  toast(`"${currentProfile.decks[i].name}" active!`);renderMyDecks();
+};
+window.deleteDeck=async i=>{
+  if(!confirm('Delete this deck?'))return;
+  currentProfile.decks.splice(i,1);
+  await setDoc(doc(db,'users',currentUser.uid),currentProfile);renderMyDecks();
+};
+window.editDeck=i=>{
+  editingDeckIdx=i;buildingDeck=[...(currentProfile.decks[i].cards||[])];
+  showScreen('deckbuilder');
+  document.getElementById('deck-name-inp').value=currentProfile.decks[i].name;
+  document.getElementById('deck-format-sel').value=currentProfile.decks[i].format||'standard';
+  renderBuilderList();
+};
+window.newDeck=()=>{
+  editingDeckIdx=-1;buildingDeck=[];
+  showScreen('deckbuilder');
+  document.getElementById('deck-name-inp').value='';
+  document.getElementById('deck-format-sel').value='standard';
+  document.getElementById('builder-results').innerHTML='';
+  renderBuilderList();
+};
+window.showAIDeckBuilder=()=>showScreen('aideckbuilder');
+
+// Card zoom
+window.showCardZoom=(card,mode)=>{
+  zoomCard=card;zoomMode=mode;
+  document.getElementById('zoom-img').src=imgUrl(card);
+  document.getElementById('zoom-name').textContent=card.name;
+  document.getElementById('zoom-type').textContent=card.type_line||'';
+  document.getElementById('zoom-text').textContent=card.oracle_text||card.card_faces?.[0]?.oracle_text||'';
+  document.getElementById('zoom-pt').textContent=card.power?`${card.power}/${card.toughness}`:'';
+  document.getElementById('zoom-add-btn').style.display=mode==='builder'?'block':'none';
+  document.getElementById('zoom-save-btn').style.display=(mode==='collection'||mode==='search')?'block':'none';
+  document.getElementById('zoom-pick-btn').style.display='none';
+  document.getElementById('card-zoom').style.display='flex';
+};
+window.closeZoom=()=>document.getElementById('card-zoom').style.display='none';
+window.zoomAddToDeck=()=>{
+  if(!zoomCard)return;
+  buildingDeck.push({...zoomCard,instanceId:uid()});
+  renderBuilderList();toast(`${zoomCard.name} added!`);closeZoom();
+};
+window.zoomSaveToCollection=async()=>{
+  if(!zoomCard)return;
+  if(!currentProfile.collection)currentProfile.collection=[];
+  if(currentProfile.collection.find(c=>c.id===zoomCard.id))return toast('Already saved');
+  currentProfile.collection.push({id:zoomCard.id,name:zoomCard.name,image_uris:zoomCard.image_uris,card_faces:zoomCard.card_faces});
+  await setDoc(doc(db,'users',currentUser.uid),currentProfile);
+  toast(`${zoomCard.name} saved!`);closeZoom();renderCollection();
+};
+
+// Deck Builder
+const BASIC_LANDS=[
+  {name:'Plains',emoji:'☀️',image_uris:{normal:'https://cards.scryfall.io/normal/front/a/c/ac4abbd3-a72f-442c-9af1-c68b28b3b65c.jpg'}},
+  {name:'Island',emoji:'🌊',image_uris:{normal:'https://cards.scryfall.io/normal/front/8/8/884b91da-a179-4593-bfac-c9d3c6d2b7ea.jpg'}},
+  {name:'Swamp',emoji:'🌑',image_uris:{normal:'https://cards.scryfall.io/normal/front/b/f/bfd6e95f-c5a8-4613-b745-3e764819f8f4.jpg'}},
+  {name:'Mountain',emoji:'🏔',image_uris:{normal:'https://cards.scryfall.io/normal/front/0/8/08f9a913-bd0b-4d4d-a14c-8e29c9a8e6c8.jpg'}},
+  {name:'Forest',emoji:'🌲',image_uris:{normal:'https://cards.scryfall.io/normal/front/1/8/18bd50f2-d852-4fd1-b5b8-02b600b28168.jpg'}},
+];
+window.addBasicLand=name=>{
+  const land=BASIC_LANDS.find(l=>l.name===name);if(!land)return;
+  buildingDeck.push({...land,id:`basic-${name}-${uid()}`,instanceId:uid(),type_line:'Basic Land'});
+  renderBuilderList();
+};
+window.removeBasicLand=name=>{
+  const idx=buildingDeck.findLastIndex(c=>c.name===name);
+  if(idx!==-1){buildingDeck.splice(idx,1);renderBuilderList();}
+};
+function updateLandCounts(){
+  BASIC_LANDS.forEach(l=>{
+    const el=document.getElementById(`lc-${l.name}`);
+    if(el) el.textContent=buildingDeck.filter(c=>c.name===l.name).length;
+  });
+}
+function renderBuilderList(){
+  updateLandCounts();
+  document.getElementById('builder-count').textContent=buildingDeck.length;
+  const groups={};
+  buildingDeck.forEach(c=>{if(!groups[c.name])groups[c.name]={card:c,count:0,ids:[]};groups[c.name].count++;groups[c.name].ids.push(c.instanceId);});
+  const el=document.getElementById('builder-list');el.innerHTML='';
+  Object.values(groups).forEach(g=>{
+    const d=document.createElement('div');d.className='deck-item';
+    d.innerHTML=`<span style="flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.count}× ${g.card.name}</span>`;
+    const rm=document.createElement('button');rm.className='deck-remove';rm.textContent='−';
+    rm.onclick=()=>{buildingDeck=buildingDeck.filter(c=>c.instanceId!==g.ids[g.ids.length-1]);renderBuilderList();};
+    d.appendChild(rm);el.appendChild(d);
+  });
+}
+window.saveDeck=async()=>{
+  const name=document.getElementById('deck-name-inp').value.trim()||'My Deck';
+  const format=document.getElementById('deck-format-sel').value;
+  const deckObj={name,format,cards:buildingDeck,savedAt:Date.now()};
+  if(!currentProfile.decks)currentProfile.decks=[];
+  if(editingDeckIdx>=0)currentProfile.decks[editingDeckIdx]=deckObj;
+  else currentProfile.decks.push(deckObj);
+  await setDoc(doc(db,'users',currentUser.uid),currentProfile);
+  toast(`"${name}" saved!`);showScreen('library');showLibTab('decks');
+};
+
+// AI Deck Builder
+window.buildAIDeck=async()=>{
+  const prompt=document.getElementById('ai-deck-prompt').value.trim();
+  const format=document.getElementById('ai-deck-format').value;
+  if(!prompt)return toast('Describe your deck first!',true);
+  const el=document.getElementById('ai-deck-result');
+  el.innerHTML='<div style="color:var(--muted);font-style:italic;font-size:13px">🤖 Building your deck…</div>';
+  document.getElementById('ai-build-btn').disabled=true;
+  const cardCount=format==='commander'?99:60;
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,
+        system:`You are an expert MTG deck builder. Respond ONLY with JSON: {"deckName":"Name","description":"desc","cards":[{"name":"Card Name","count":4}...],"strategy":"notes"}. Build a ${cardCount}-card ${format} deck. Include lands. No extra text.`,
+        messages:[{role:'user',content:`Build: ${prompt}`}]})});
+    const data=await res.json();
+    const json=JSON.parse(data.content?.[0]?.text.replace(/```json|```/g,'').trim()||'{}');
+    el.innerHTML=`<div class="ai-result-box">
+      <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold);margin-bottom:4px">${json.deckName}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${json.description}</div>
+      <div style="font-size:11px;color:var(--text);line-height:1.5;margin-bottom:10px">${json.strategy}</div>
+      <div id="ai-card-list" style="display:flex;flex-direction:column;gap:3px;margin-bottom:12px"></div>
+      <button class="btn-gold" onclick="saveAIDeck()">✓ Save This Deck</button>
+    </div>`;
+    json.cards.forEach(c=>{
+      const d=document.createElement('div');d.className='deck-item';
+      d.innerHTML=`<span style="flex:1;font-size:12px">${c.count}× ${c.name}</span>`;
+      document.getElementById('ai-card-list').appendChild(d);
+    });
+    window._aiDeckJson=json;window._aiDeckFormat=format;
+  }catch{el.innerHTML='<div style="color:var(--red);font-size:13px">Failed. Try a clearer description.</div>';}
+  document.getElementById('ai-build-btn').disabled=false;
+};
+window.saveAIDeck=async()=>{
+  const json=window._aiDeckJson;const format=window._aiDeckFormat||'standard';
+  if(!json)return;
+  toast('Fetching cards…');
+  const cards=[];
+  for(const entry of json.cards){
+    try{
+      const r=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);
+      if(!r.ok)continue;
+      const card=await r.json();
+      for(let i=0;i<(entry.count||1);i++) cards.push({...card,instanceId:uid()});
+    }catch{}
+  }
+  const deckObj={name:json.deckName,format,cards,aiBuilt:true,savedAt:Date.now()};
+  if(!currentProfile.decks)currentProfile.decks=[];
+  currentProfile.decks.push(deckObj);
+  await setDoc(doc(db,'users',currentUser.uid),currentProfile);
+  toast(`"${json.deckName}" saved! (${cards.length} cards)`);
+  showScreen('library');showLibTab('decks');
+};
+
+// Rooms
+async function loadRooms(){
+  const container=document.getElementById('rooms-grid');container.innerHTML='';
+  for(let i=1;i<=4;i++){
+    const snap=await getDoc(doc(db,'rooms',`table-${i}`));
+    const room=snap.exists()?snap.data():{id:`table-${i}`,players:[],spectators:[],status:'empty',format:null,gameState:null};
+    const d=document.createElement('div');d.className='room-card';
+    const sc=room.status==='playing'?'#5ae07a':room.status==='waiting'?'#c8a84b':room.status==='draft'?'#b07ae0':'#555';
+    const st=room.status==='playing'?'In Game':room.status==='waiting'?'Waiting':room.status==='draft'?'Draft Night':'Open';
+    const fl=room.format?({standard:'Standard 60',commander:'Commander 100',draft:'Draft Night'}[room.format]||room.format):'';
+    const p1=room.players?.[0]?.username||'—',p2=room.players?.[1]?.username||'—';
+    const specs=room.spectators?.length||0;
+    d.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+      <div><div class="room-name">Table ${i}</div>${fl?`<div style="font-size:10px;color:var(--gold);letter-spacing:1px;margin-top:2px">${fl}</div>`:''}</div>
+      <div style="font-size:11px;color:${sc}">● ${st}</div></div>
+    <div class="room-seats">
+      <div class="seat${room.players?.[0]?' taken':''}"><div class="seat-icon">${room.players?.[0]?'👤':'⊕'}</div><div class="seat-name">${p1}</div></div>
+      <div style="font-size:18px;color:var(--border2)">vs</div>
+      <div class="seat${room.players?.[1]?' taken':''}"><div class="seat-icon">${room.players?.[1]?'👤':'⊕'}</div><div class="seat-name">${p2}</div></div>
+    </div>
+    ${specs>0?`<div style="font-size:10px;color:var(--muted);margin-bottom:8px">👁 ${specs} watching</div>`:''}
+    <div style="display:flex;gap:8px">
+      <button class="room-btn" onclick="clickJoinRoom('table-${i}')">▶ Join</button>
+      <button class="room-btn" style="border-color:var(--border2);color:var(--muted)" onclick="joinAsSpectator('table-${i}')">👁 Watch</button>
+    </div>`;
+    container.appendChild(d);
+  }
+}
+
+window.clickJoinRoom=async roomId=>{
+  const snap=await getDoc(doc(db,'rooms',roomId));
+  const room=snap.exists()?snap.data():{id:roomId,players:[],spectators:[],status:'empty',format:null};
+  if((room.players||[]).find(p=>p.uid===currentUser.uid)){enterRoom(roomId,'player');return;}
+  if((room.players||[]).length>=2)return toast('Table is full!',true);
+  if(!room.format){
+    window._pendingRoomId=roomId;
+    document.getElementById('format-room-title').textContent=roomId.replace('-',' ').replace(/\b\w/g,c=>c.toUpperCase());
+    document.getElementById('overlay-format').style.display='flex';
+  } else {
+    showDeckPicker(roomId,room.format);
+  }
+};
+
+window.selectFormat=async format=>{
+  closeOverlay('overlay-format');
+  const roomId=window._pendingRoomId;
+  if(format==='draft'){await joinDraftRoom(roomId);}
+  else{showDeckPicker(roomId,format);}
+};
+
+function showDeckPicker(roomId,format){
+  window._pendingRoomId=roomId;window._pendingFormat=format;
+  const decks=(currentProfile.decks||[]).filter(d=>d.format===format);
+  const el=document.getElementById('deck-picker-list');el.innerHTML='';
+  document.getElementById('deck-picker-title').textContent=format==='commander'?'Pick Commander Deck':'Pick Standard Deck';
+  if(decks.length===0){
+    el.innerHTML=`<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">No ${format==='commander'?'Commander':'Standard'} decks yet.<br><br>
+      <button class="btn-gold" onclick="closeOverlay('overlay-deckpicker');showScreen('library');showLibTab('decks')">Build One First</button></div>`;
+  } else {
+    decks.forEach(deck=>{
+      const realIdx=(currentProfile.decks||[]).indexOf(deck);
+      const d=document.createElement('div');d.className='picker-deck-row';
+      d.innerHTML=`<div style="flex:1"><div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">${deck.name}</div>
+        <div style="font-size:11px;color:var(--muted)">${deck.cards?.length||0} cards</div></div>
+        <button class="btn-sm" onclick="confirmJoinRoom(${realIdx})">Select ▶</button>`;
+      el.appendChild(d);
+    });
+  }
+  document.getElementById('overlay-deckpicker').style.display='flex';
+}
+
+window.confirmJoinRoom=async deckIdx=>{
+  closeOverlay('overlay-deckpicker');
+  const roomId=window._pendingRoomId;const format=window._pendingFormat;
+  const snap=await getDoc(doc(db,'rooms',roomId));
+  let room=snap.exists()?snap.data():{id:roomId,players:[],spectators:[],status:'empty',format,gameState:null};
+  if(!room.format)room.format=format;
+  if(!(room.players||[]).find(p=>p.uid===currentUser.uid))
+    room.players=[...(room.players||[]),{uid:currentUser.uid,username:currentProfile.username,deckIdx}];
+  room.status='waiting';
+  currentProfile.selectedDeckIdx=deckIdx;currentProfile.selectedDeck=currentProfile.decks[deckIdx].cards;
+  await setDoc(doc(db,'users',currentUser.uid),currentProfile);
+  await setDoc(doc(db,'rooms',roomId),room);
+  currentRoom={id:roomId,role:'player'};
+  enterRoom(roomId,'player');
+};
+
+window.joinAsSpectator=async roomId=>{
+  const snap=await getDoc(doc(db,'rooms',roomId));
+  let room=snap.exists()?snap.data():{id:roomId,players:[],spectators:[],status:'empty'};
+  if(!(room.spectators||[]).find(p=>p.uid===currentUser.uid))
+    room.spectators=[...(room.spectators||[]),{uid:currentUser.uid,username:currentProfile.username}];
+  await setDoc(doc(db,'rooms',roomId),room);
+  currentRoom={id:roomId,role:'spectator'};
+  enterRoom(roomId,'spectator');
+};
+
+// Game Room
+function enterRoom(roomId,role){
+  showScreen('room');
+  document.getElementById('room-role-badge').textContent=role==='spectator'?'👁 Spectating':'▶ Playing';
+  document.getElementById('room-title').textContent=roomId.replace('-',' ').replace(/\b\w/g,c=>c.toUpperCase());
+  if(roomUnsub)roomUnsub();
+  roomUnsub=onSnapshot(doc(db,'rooms',roomId),snap=>{if(snap.exists())renderRoom(snap.data(),role);});
+  switchRoomTab('board');
+  if(currentUser) setDoc(doc(db,'online',currentUser.uid),{uid:currentUser.uid,username:currentProfile.username,at:roomId,ts:Date.now()});
+}
+function renderRoom(room,role){
+  const p1=room.players?.[0],p2=room.players?.[1];
+  document.getElementById('room-p1-name').textContent=p1?.username||'Waiting…';
+  document.getElementById('room-p2-name').textContent=p2?.username||'Waiting…';
   const gs=room.gameState;
-  if (gs) {
+  if(gs){
     document.getElementById('room-p1-life').textContent=`♥ ${gs.life?.[0]??20}`;
     document.getElementById('room-p2-life').textContent=`♥ ${gs.life?.[1]??20}`;
     document.getElementById('turn-indicator').textContent=`Turn: ${room.players?.[gs.turn??0]?.username||'?'}`;
@@ -175,19 +452,15 @@ function renderRoom(room,role) {
   }
   document.getElementById('spec-list').textContent=(room.spectators||[]).map(s=>s.username).join(', ')||'None';
 }
-function getMyPi(room) { return (room.players||[]).findIndex(p=>p.uid===currentUser.uid); }
-function initGS() { return {life:[20,20],turn:0,library:[[],[]],hand:[[],[]],battlefield:[[],[]],graveyard:[[],[]]}; }
-async function updateGS(newGs) {
-  await updateDoc(doc(db,'rooms',currentRoom.id),{gameState:newGs});
-}
+function getMyPi(room){return(room.players||[]).findIndex(p=>p.uid===currentUser.uid);}
+function initGS(){return{life:[20,20],turn:0,library:[[],[]],hand:[[],[]],battlefield:[[],[]],graveyard:[[],[]]};}
+async function updateGS(newGs){await updateDoc(doc(db,'rooms',currentRoom.id),{gameState:newGs});}
 
-// ── Board ─────────────────────────────────────────────────────────────────────
-function renderBoardFromState(gs,role,room) {
-  const myIdx=getMyPi(room), isPlayer=role==='player'&&myIdx!==-1;
+function renderBoardFromState(gs,role,room){
+  const myIdx=getMyPi(room),isPlayer=role==='player'&&myIdx!==-1;
   for(let pi=0;pi<2;pi++){
-    const s=pi===0?'p1':'p2', canCtrl=isPlayer&&myIdx===pi;
-    const libEl=document.getElementById(`lib-count-${s}`);
-    if(libEl) libEl.textContent=(gs.library?.[pi]||[]).length;
+    const s=pi===0?'p1':'p2',canCtrl=isPlayer&&myIdx===pi;
+    const libEl=document.getElementById(`lib-count-${s}`);if(libEl)libEl.textContent=(gs.library?.[pi]||[]).length;
     const gyEl=document.getElementById(`gy-${s}`);
     if(gyEl){
       const gy=gs.graveyard?.[pi]||[];
@@ -201,11 +474,11 @@ function renderBoardFromState(gs,role,room) {
         if(card.isToken){
           d.className='token-chip';
           d.innerHTML=`<div class="token-pt">${card.pt}</div><div style="font-size:8px;color:var(--muted)">${card.tokenName}</div>`;
-          if(canCtrl) d.onclick=()=>showTokenActions(pi,card.instanceId,gs);
+          if(canCtrl)d.onclick=()=>showTokenActions(pi,card.instanceId,gs);
         } else {
           d.className='card-thumb'+(card.tapped?' tapped':'');
           d.innerHTML=`<img src="${imgUrl(card)}" loading="lazy">`;
-          if(canCtrl) d.onclick=()=>showBfActions(pi,card.instanceId,card,gs);
+          if(canCtrl)d.onclick=()=>showBfActions(pi,card.instanceId,card,gs);
           else d.onclick=()=>previewCard(imgUrl(card));
         }
         bfEl.appendChild(d);
@@ -217,40 +490,39 @@ function renderBoardFromState(gs,role,room) {
       const hand=gs.hand?.[pi]||[];
       if(isPlayer&&myIdx===pi){
         hand.forEach(card=>{
-          const d=document.createElement('div'); d.className='card-thumb';
+          const d=document.createElement('div');d.className='card-thumb';
           d.innerHTML=`<img src="${imgUrl(card)}" loading="lazy">`;
           d.onclick=()=>showHandActions(pi,card.instanceId,card,gs);
           handEl.appendChild(d);
         });
       } else {
-        hand.forEach(()=>{ const d=document.createElement('div'); d.className='card-back'; handEl.appendChild(d); });
+        hand.forEach(()=>{const d=document.createElement('div');d.className='card-back';handEl.appendChild(d);});
       }
     }
   }
 }
 
-// ── Card actions ──────────────────────────────────────────────────────────────
-function showActionSheet(title,actions) {
+function showActionSheet(title,actions){
   document.getElementById('action-title').textContent=title;
-  const btns=document.getElementById('action-btns'); btns.innerHTML='';
+  const btns=document.getElementById('action-btns');btns.innerHTML='';
   actions.forEach(a=>{
-    const b=document.createElement('button'); b.className='btn-action'+(a.danger?' danger':'');
-    b.textContent=a.label; b.onclick=()=>{closeActionSheet();a.fn();}; btns.appendChild(b);
+    const b=document.createElement('button');b.className='btn-action'+(a.danger?' danger':'');
+    b.textContent=a.label;b.onclick=()=>{closeActionSheet();a.fn();};btns.appendChild(b);
   });
   document.getElementById('action-sheet').style.display='flex';
 }
-window.closeActionSheet=()=>{ document.getElementById('action-sheet').style.display='none'; };
+window.closeActionSheet=()=>document.getElementById('action-sheet').style.display='none';
 
 function showHandActions(pi,instanceId,card,gs){
   showActionSheet(card.name,[
     {label:'⊕ Play to Battlefield',fn:async()=>{
-      const ng={...gs}; ng.hand=gs.hand.map(a=>[...a]); ng.battlefield=gs.battlefield.map(a=>[...a]);
+      const ng={...gs};ng.hand=gs.hand.map(a=>[...a]);ng.battlefield=gs.battlefield.map(a=>[...a]);
       ng.hand[pi]=ng.hand[pi].filter(c=>c.instanceId!==instanceId);
       ng.battlefield[pi]=[...ng.battlefield[pi],{...card,instanceId:uid(),tapped:false}];
       await updateGS(ng);
     }},
     {label:'☠ Discard',fn:async()=>{
-      const ng={...gs}; ng.hand=gs.hand.map(a=>[...a]); ng.graveyard=gs.graveyard.map(a=>[...a]);
+      const ng={...gs};ng.hand=gs.hand.map(a=>[...a]);ng.graveyard=gs.graveyard.map(a=>[...a]);
       ng.hand[pi]=ng.hand[pi].filter(c=>c.instanceId!==instanceId);
       ng.graveyard[pi]=[...ng.graveyard[pi],{...card}];
       await updateGS(ng);
@@ -261,18 +533,18 @@ function showHandActions(pi,instanceId,card,gs){
 function showBfActions(pi,instanceId,card,gs){
   showActionSheet(card.name,[
     {label:card.tapped?'↺ Untap':'↷ Tap',fn:async()=>{
-      const ng={...gs}; ng.battlefield=gs.battlefield.map(a=>[...a]);
+      const ng={...gs};ng.battlefield=gs.battlefield.map(a=>[...a]);
       ng.battlefield[pi]=ng.battlefield[pi].map(c=>c.instanceId===instanceId?{...c,tapped:!c.tapped}:c);
       await updateGS(ng);
     }},
     {label:'☠ To Graveyard',fn:async()=>{
-      const ng={...gs}; ng.battlefield=gs.battlefield.map(a=>[...a]); ng.graveyard=gs.graveyard.map(a=>[...a]);
+      const ng={...gs};ng.battlefield=gs.battlefield.map(a=>[...a]);ng.graveyard=gs.graveyard.map(a=>[...a]);
       ng.graveyard[pi]=[...ng.graveyard[pi],{...card,tapped:false}];
       ng.battlefield[pi]=ng.battlefield[pi].filter(c=>c.instanceId!==instanceId);
       await updateGS(ng);
     }},
     {label:'✋ Return to Hand',fn:async()=>{
-      const ng={...gs}; ng.battlefield=gs.battlefield.map(a=>[...a]); ng.hand=gs.hand.map(a=>[...a]);
+      const ng={...gs};ng.battlefield=gs.battlefield.map(a=>[...a]);ng.hand=gs.hand.map(a=>[...a]);
       ng.hand[pi]=[...ng.hand[pi],{...card,tapped:false,instanceId:uid()}];
       ng.battlefield[pi]=ng.battlefield[pi].filter(c=>c.instanceId!==instanceId);
       await updateGS(ng);
@@ -281,39 +553,35 @@ function showBfActions(pi,instanceId,card,gs){
   ]);
 }
 function showTokenActions(pi,instanceId,gs){
-  showActionSheet('Token',[
-    {label:'✕ Remove Token',danger:true,fn:async()=>{
-      const ng={...gs}; ng.battlefield=gs.battlefield.map(a=>[...a]);
-      ng.battlefield[pi]=ng.battlefield[pi].filter(c=>c.instanceId!==instanceId);
-      await updateGS(ng);
-    }},
-  ]);
+  showActionSheet('Token',[{label:'✕ Remove',danger:true,fn:async()=>{
+    const ng={...gs};ng.battlefield=gs.battlefield.map(a=>[...a]);
+    ng.battlefield[pi]=ng.battlefield[pi].filter(c=>c.instanceId!==instanceId);
+    await updateGS(ng);
+  }}]);
 }
 
-// ── Room controls ─────────────────────────────────────────────────────────────
 window.drawCard=async()=>{
-  const snap=await getDoc(doc(db,'rooms',currentRoom.id)); const room=snap.data();
-  const pi=getMyPi(room); if(pi===-1) return;
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));const room=snap.data();
+  const pi=getMyPi(room);if(pi===-1)return;
   const gs=room.gameState||initGS();
-  if(!gs.library[pi]||gs.library[pi].length===0) return showToast('Library empty!',true);
-  const [top,...rest]=gs.library[pi];
-  const ng={...gs}; ng.library=gs.library.map(a=>[...a]); ng.hand=gs.hand.map(a=>[...a]);
-  ng.library[pi]=rest; ng.hand[pi]=[...ng.hand[pi],{...top,instanceId:uid()}];
+  if(!gs.library[pi]||gs.library[pi].length===0)return toast('Library empty!',true);
+  const[top,...rest]=gs.library[pi];
+  const ng={...gs};ng.library=gs.library.map(a=>[...a]);ng.hand=gs.hand.map(a=>[...a]);
+  ng.library[pi]=rest;ng.hand[pi]=[...ng.hand[pi],{...top,instanceId:uid()}];
   await updateGS(ng);
 };
 window.shuffleLib=async()=>{
-  const snap=await getDoc(doc(db,'rooms',currentRoom.id)); const room=snap.data();
-  const pi=getMyPi(room); if(pi===-1) return;
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));const room=snap.data();
+  const pi=getMyPi(room);if(pi===-1)return;
   const gs=room.gameState||initGS();
-  const ng={...gs}; ng.library=gs.library.map(a=>[...a]);
-  ng.library[pi]=shuffle(ng.library[pi]);
+  const ng={...gs};ng.library=gs.library.map(a=>[...a]);ng.library[pi]=shuffle(ng.library[pi]);
   await updateGS(ng);
 };
 window.untapAll=async()=>{
-  const snap=await getDoc(doc(db,'rooms',currentRoom.id)); const room=snap.data();
-  const pi=getMyPi(room); if(pi===-1) return;
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));const room=snap.data();
+  const pi=getMyPi(room);if(pi===-1)return;
   const gs=room.gameState||initGS();
-  const ng={...gs}; ng.battlefield=gs.battlefield.map(a=>[...a]);
+  const ng={...gs};ng.battlefield=gs.battlefield.map(a=>[...a]);
   ng.battlefield[pi]=ng.battlefield[pi].map(c=>({...c,tapped:false}));
   await updateGS(ng);
 };
@@ -325,12 +593,12 @@ window.endTurn=async()=>{
 window.changeLife=async(pi,delta)=>{
   const snap=await getDoc(doc(db,'rooms',currentRoom.id));
   const gs=snap.data().gameState||initGS();
-  const nl=[...(gs.life||[20,20])]; nl[pi]=Math.max(0,nl[pi]+delta);
+  const nl=[...(gs.life||[20,20])];nl[pi]=Math.max(0,nl[pi]+delta);
   await updateGS({...gs,life:nl});
 };
 window.startGame=async()=>{
-  const snap=await getDoc(doc(db,'rooms',currentRoom.id)); const room=snap.data();
-  if((room.players||[]).length<2) return showToast('Need 2 players!',true);
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));const room=snap.data();
+  if((room.players||[]).length<2)return toast('Need 2 players!',true);
   const gs=initGS();
   for(let pi=0;pi<2;pi++){
     const ps=await getDoc(doc(db,'users',room.players[pi].uid));
@@ -339,8 +607,27 @@ window.startGame=async()=>{
     gs.library[pi]=shuffle(deck.map(c=>({...c,instanceId:uid()})));
   }
   await updateDoc(doc(db,'rooms',currentRoom.id),{gameState:gs,status:'playing'});
-  showToast('Game started!');
+  toast('Game started!');
 };
+window.showTokenOverlay=async()=>{
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));const room=snap.data();
+  const pi=getMyPi(room);if(pi===-1)return;
+  document.getElementById('token-pi').value=pi;
+  document.getElementById('overlay-tokens').style.display='flex';
+};
+window.addTokenPreset=async(name,pt)=>{await doAddToken(parseInt(document.getElementById('token-pi').value),name,pt);closeOverlay('overlay-tokens');};
+window.addCustomToken=async()=>{
+  const pi=parseInt(document.getElementById('token-pi').value);
+  await doAddToken(pi,document.getElementById('tok-name').value||'Token',document.getElementById('tok-pt').value||'1/1');
+  closeOverlay('overlay-tokens');
+};
+async function doAddToken(pi,name,pt){
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));
+  const gs=snap.data().gameState||initGS();
+  const ng={...gs};ng.battlefield=gs.battlefield.map(a=>[...a]);
+  ng.battlefield[pi]=[...ng.battlefield[pi],{isToken:true,tokenName:name,pt,instanceId:uid()}];
+  await updateGS(ng);
+}
 window.leaveRoom=async()=>{
   if(roomUnsub){roomUnsub();roomUnsub=null;}
   if(currentRoom){
@@ -349,457 +636,333 @@ window.leaveRoom=async()=>{
       const room=snap.data();
       const players=(room.players||[]).filter(p=>p.uid!==currentUser.uid);
       const spectators=(room.spectators||[]).filter(p=>p.uid!==currentUser.uid);
-      await updateDoc(doc(db,'rooms',currentRoom.id),{players,spectators,status:players.length===0?'empty':'waiting'});
+      await updateDoc(doc(db,'rooms',currentRoom.id),{players,spectators,status:players.length===0?'empty':'waiting',format:players.length===0?null:room.format});
     }
     currentRoom=null;
   }
-  showScreen('lobby'); loadLobby();
+  if(currentUser) setDoc(doc(db,'online',currentUser.uid),{uid:currentUser.uid,username:currentProfile.username,at:'lobby',ts:Date.now()});
+  goHome();
 };
-
-// ── Room tabs ─────────────────────────────────────────────────────────────────
 window.switchRoomTab=tab=>{
   document.querySelectorAll('.room-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
   document.querySelectorAll('.room-view').forEach(v=>v.classList.remove('active'));
   document.getElementById(`rv-${tab}`).classList.add('active');
 };
 
-// ── Token ─────────────────────────────────────────────────────────────────────
-window.showTokenOverlay=async()=>{
-  const snap=await getDoc(doc(db,'rooms',currentRoom.id)); const room=snap.data();
-  const pi=getMyPi(room); if(pi===-1) return;
-  document.getElementById('token-pi').value=pi;
-  document.getElementById('overlay-tokens').style.display='flex';
-};
-window.addTokenPreset=async(name,pt)=>{ await doAddToken(parseInt(document.getElementById('token-pi').value),name,pt); closeOverlay('overlay-tokens'); };
-window.addCustomToken=async()=>{
-  const pi=parseInt(document.getElementById('token-pi').value);
-  const name=document.getElementById('tok-name').value||'Token';
-  const pt=document.getElementById('tok-pt').value||'1/1';
-  await doAddToken(pi,name,pt); closeOverlay('overlay-tokens');
-};
-async function doAddToken(pi,name,pt){
-  const snap=await getDoc(doc(db,'rooms',currentRoom.id));
-  const gs=snap.data().gameState||initGS();
-  const ng={...gs}; ng.battlefield=gs.battlefield.map(a=>[...a]);
-  ng.battlefield[pi]=[...ng.battlefield[pi],{isToken:true,tokenName:name,pt,instanceId:uid()}];
-  await updateGS(ng);
-}
-
-// ── Rules ─────────────────────────────────────────────────────────────────────
+// Rules
 window.askRules=async()=>{
-  const inp=document.getElementById('rules-inp'), q=inp.value.trim(); if(!q) return;
+  const inp=document.getElementById('rules-inp'),q=inp.value.trim();if(!q)return;
   inp.value='';
   const msgs=document.getElementById('rules-msgs');
-  const um=document.createElement('div'); um.className='rules-msg user'; um.textContent=q; msgs.appendChild(um);
-  const th=document.createElement('div'); th.className='rules-msg ai thinking'; th.textContent='Consulting the rules…'; msgs.appendChild(th);
+  const um=document.createElement('div');um.className='rules-msg user';um.textContent=q;msgs.appendChild(um);
+  const th=document.createElement('div');th.className='rules-msg ai thinking';th.textContent='Consulting the rules…';msgs.appendChild(th);
   msgs.scrollTop=msgs.scrollHeight;
   rulesHistory.push({role:'user',content:q});
-  try {
+  try{
     const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,
-        system:'You are an expert Magic: The Gathering rules judge. Answer clearly and concisely in plain English. 2-4 sentences unless complexity demands more.',
+        system:'You are an expert MTG rules judge. Answer clearly in plain English. 2-4 sentences.',
         messages:rulesHistory})});
     const data=await res.json();
     const answer=data.content?.[0]?.text||'No answer.';
     rulesHistory.push({role:'assistant',content:answer});
-    th.className='rules-msg ai'; th.textContent=answer;
-  } catch { th.className='rules-msg ai'; th.textContent='Connection error.'; }
+    th.className='rules-msg ai';th.textContent=answer;
+  }catch{th.className='rules-msg ai';th.textContent='Connection error.';}
   msgs.scrollTop=msgs.scrollHeight;
 };
 
-// ── Deck screens ──────────────────────────────────────────────────────────────
-window.showMyDecks=()=>{ showScreen('mydecks'); renderMyDecks(); };
-function renderMyDecks(){
-  const decks=currentProfile.decks||[];
-  document.getElementById('deck-count-label').textContent=`${decks.length} deck${decks.length!==1?'s':''}`;
-  const el=document.getElementById('my-decks-list'); el.innerHTML='';
-  if(decks.length===0){ el.innerHTML='<p style="color:var(--muted);font-size:14px;text-align:center;padding:20px">No decks yet. Create one!</p>'; return; }
-  decks.forEach((deck,i)=>{
-    const d=document.createElement('div'); d.className='deck-row'+(currentProfile.selectedDeckIdx===i?' selected':'');
-    d.innerHTML=`<div style="flex:1"><div style="font-family:\'Cinzel\',serif;font-size:13px;color:var(--gold)">${deck.name}</div>
-      <div style="font-size:11px;color:var(--muted)">${deck.cards?.length||0} cards · ${deck.format||'Standard'} ${deck.aiBuilt?'· 🤖 AI Built':''}</div></div>
-      <div style="display:flex;gap:6px;">
-        <button class="btn-sm" onclick="selectDeck(${i})">✓ Use</button>
-        <button class="btn-sm" onclick="editDeck(${i})">✎ Edit</button>
-        <button class="btn-sm danger" onclick="deleteDeck(${i})">✕</button>
-      </div>`;
+// Draft Night
+async function joinDraftRoom(roomId){
+  const snap=await getDoc(doc(db,'rooms',roomId));
+  let room=snap.exists()?snap.data():{id:roomId,players:[],spectators:[],status:'draft',format:'draft'};
+  if((room.players||[]).length>=6)return toast('Draft room full! (max 6)',true);
+  if(!(room.players||[]).find(p=>p.uid===currentUser.uid))
+    room.players=[...(room.players||[]),{uid:currentUser.uid,username:currentProfile.username,ready:false,wins:0}];
+  room.format='draft';room.status='draft';
+  if(!room.draftPhase)room.draftPhase='lobby';
+  await setDoc(doc(db,'rooms',roomId),room);
+  currentRoom={id:roomId,role:'player'};
+  showScreen('draftroom');
+  document.getElementById('draft-room-title').textContent=roomId.replace('-',' ').replace(/\b\w/g,c=>c.toUpperCase());
+  if(draftUnsub)draftUnsub();
+  draftUnsub=onSnapshot(doc(db,'rooms',roomId),snap=>{if(snap.exists())renderDraftRoom(snap.data());});
+}
+
+function renderDraftRoom(room){
+  const phase=room.draftPhase||'lobby';
+  document.querySelectorAll('.draft-phase').forEach(p=>p.classList.remove('active'));
+  document.getElementById(`dp-${phase}`)?.classList.add('active');
+  const el=document.getElementById('draft-players-list');if(!el)return;
+  el.innerHTML='';
+  (room.players||[]).forEach(p=>{
+    const d=document.createElement('div');d.className='draft-player-row';
+    const isMe=p.uid===currentUser.uid;
+    d.innerHTML=`<span style="font-size:13px;${isMe?'color:var(--gold)':''}">👤 ${p.username}${isMe?' (you)':''}</span>
+      <span style="font-size:11px;color:${p.ready?'var(--green)':'var(--muted)'}">${p.ready?'✓ Ready':'Waiting…'}</span>`;
     el.appendChild(d);
   });
+  if(phase==='lobby'||phase==='voting'){
+    const votes=room.themeVotes||{};
+    const voteEl=document.getElementById('draft-vote-tally');if(voteEl){
+      voteEl.innerHTML='';
+      Object.entries(votes).forEach(([theme,voters])=>{
+        const d=document.createElement('div');d.style.cssText='display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)';
+        d.innerHTML=`<span>${theme}</span><span style="color:var(--gold)">${voters.length} vote${voters.length!==1?'s':''}</span>`;
+        voteEl.appendChild(d);
+      });
+    }
+  }
+  if(phase==='picking')renderMyDraftPack(room);
+  if(phase==='playing'||phase==='results')renderDraftBracket(room);
+  if(phase==='results')renderDraftResults(room);
 }
-window.selectDeck=async i=>{
-  currentProfile.selectedDeckIdx=i; currentProfile.selectedDeck=currentProfile.decks[i].cards;
-  await setDoc(doc(db,'users',currentUser.uid),currentProfile);
-  showToast(`"${currentProfile.decks[i].name}" selected!`); renderMyDecks();
+
+window.voteDraftTheme=async theme=>{
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));
+  const room=snap.data();const votes=room.themeVotes||{};
+  Object.keys(votes).forEach(t=>{votes[t]=(votes[t]||[]).filter(u=>u!==currentUser.uid);});
+  if(!votes[theme])votes[theme]=[];
+  votes[theme].push(currentUser.uid);
+  await updateDoc(doc(db,'rooms',currentRoom.id),{themeVotes:votes,draftPhase:'voting'});
+  toast(`Voted: ${theme}`);
 };
-window.deleteDeck=async i=>{
-  if(!confirm('Delete this deck?')) return;
-  currentProfile.decks.splice(i,1);
-  await setDoc(doc(db,'users',currentUser.uid),currentProfile); renderMyDecks();
-};
-window.editDeck=i=>{
-  editingDeckIdx=i; buildingDeck=[...(currentProfile.decks[i].cards||[])];
-  showScreen('deckbuilder');
-  document.getElementById('deck-name-inp').value=currentProfile.decks[i].name;
-  document.getElementById('deck-format-sel').value=currentProfile.decks[i].format||'standard';
-  renderBuilderList(); clearFilters();
+window.draftCustomVote=async()=>{
+  const theme=document.getElementById('draft-custom-theme').value.trim();
+  if(!theme)return toast('Enter a theme first!',true);
+  await voteDraftTheme(theme);
 };
 
-// ── Deck builder mode selection ───────────────────────────────────────────────
-window.showDeckModeSelect=()=>{ showScreen('deckmode'); };
-
-window.startManualBuild=()=>{
-  editingDeckIdx=-1; buildingDeck=[];
-  showScreen('deckbuilder');
-  document.getElementById('deck-name-inp').value='';
-  document.getElementById('deck-format-sel').value='standard';
-  document.getElementById('builder-results').innerHTML='';
-  renderBuilderList(); clearFilters();
+window.setDraftReady=async()=>{
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));
+  const room=snap.data();
+  const players=(room.players||[]).map(p=>p.uid===currentUser.uid?{...p,ready:true}:p);
+  const allReady=players.every(p=>p.ready)&&players.length>=2;
+  if(allReady){
+    const votes=room.themeVotes||{};
+    let winTheme='Random Mix',maxV=0;
+    Object.entries(votes).forEach(([t,v])=>{if(v.length>maxV){maxV=v.length;winTheme=t;}});
+    await updateDoc(doc(db,'rooms',currentRoom.id),{players,winningTheme:winTheme,draftPhase:'generating'});
+    if(players[0].uid===currentUser.uid)await generateDraftPacks(currentRoom.id,winTheme,players.length);
+  } else {
+    await updateDoc(doc(db,'rooms',currentRoom.id),{players});
+    toast('Marked as ready!');
+  }
 };
 
-window.showAIDeckBuilder=()=>{ showScreen('aideckbuilder'); document.getElementById('ai-deck-prompt').value=''; document.getElementById('ai-deck-result').innerHTML=''; };
-
-window.showDraftSetup=()=>{ showScreen('draftsetup'); document.getElementById('draft-theme-inp').value=''; document.getElementById('draft-style-btns').querySelectorAll('.style-btn').forEach(b=>b.classList.remove('active')); };
-
-// ── Manual deck builder ───────────────────────────────────────────────────────
-const COLOR_MAP = {W:'white',U:'blue',B:'black',R:'red',G:'green',C:'colorless'};
-let activeColors=[], activeTypes=[], activeCmc='', activeSearch='';
-
-function clearFilters(){ activeColors=[]; activeTypes=[]; activeCmc=''; activeSearch=''; updateFilterUI(); }
-function updateFilterUI(){
-  document.querySelectorAll('.color-btn').forEach(b=>b.classList.toggle('active',activeColors.includes(b.dataset.c)));
-  document.querySelectorAll('.type-btn').forEach(b=>b.classList.toggle('active',activeTypes.includes(b.dataset.t)));
-  document.querySelectorAll('.cmc-btn').forEach(b=>b.classList.toggle('active',activeCmc===b.dataset.cmc));
+async function generateDraftPacks(roomId,theme,playerCount){
+  toast('🤖 Generating themed packs…');
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,
+        system:`You are an MTG draft curator. Generate ${playerCount} sets of 3 booster packs (15 cards each) themed around: "${theme}". Respond ONLY with JSON: {"theme":"name","playerPacks":[[{"name":"Card"},...],...]} where playerPacks has ${playerCount} arrays each with 45 card objects. Use real MTG cards. No extra text.`,
+        messages:[{role:'user',content:`Draft: ${theme} for ${playerCount} players`}]})});
+    const data=await res.json();
+    const json=JSON.parse(data.content?.[0]?.text.replace(/```json|```/g,'').trim()||'{}');
+    const playerPacks=[];
+    for(const packSet of(json.playerPacks||[])){
+      const cards=[];
+      for(const entry of packSet){
+        try{
+          const r=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);
+          if(r.ok)cards.push(await r.json());
+        }catch{}
+      }
+      const packs=[];
+      for(let i=0;i<3;i++)packs.push(cards.slice(i*15,(i+1)*15));
+      playerPacks.push(packs);
+    }
+    await updateDoc(doc(db,'rooms',roomId),{draftPhase:'picking',playerPacks,playerPicks:playerPacks.map(()=>[]),currentPackIdx:0});
+  }catch{
+    toast('Failed to generate packs.',true);
+    await updateDoc(doc(db,'rooms',roomId),{draftPhase:'lobby'});
+  }
 }
-window.toggleColor=c=>{ activeColors=activeColors.includes(c)?activeColors.filter(x=>x!==c):[...activeColors,c]; updateFilterUI(); };
-window.toggleType=t=>{ activeTypes=activeTypes.includes(t)?activeTypes.filter(x=>x!==t):[...activeTypes,t]; updateFilterUI(); };
-window.toggleCmc=c=>{ activeCmc=activeCmc===c?'':c; updateFilterUI(); };
 
-window.searchBuilderCards=async()=>{
-  const q=document.getElementById('builder-search').value.trim();
-  activeSearch=q;
-  let query=q||'*';
-  if(activeColors.length>0) query+=` color:${activeColors.join('')}`;
-  if(activeTypes.length>0) query+=` type:${activeTypes.join(' type:')}`;
-  if(activeCmc) query+=` cmc:${activeCmc}`;
-  const el=document.getElementById('builder-results');
-  el.innerHTML='<span style="color:var(--muted);font-size:12px">Searching…</span>';
-  try {
-    const r=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&unique=cards&order=name`);
-    const d=await r.json();
-    el.innerHTML='';
-    (d.data||[]).slice(0,20).forEach(card=>{
-      const url=imgUrl(card); if(!url) return;
-      const wrap=document.createElement('div'); wrap.className='result-wrap';
-      wrap.innerHTML=`<img src="${url}" class="result-card" loading="lazy" alt="${card.name}">`;
-      wrap.querySelector('img').onclick=()=>showCardZoom(card,'builder');
-      el.appendChild(wrap);
-    });
-    if((d.data||[]).length===0) el.innerHTML='<span style="color:var(--muted);font-size:12px">No results. Try different filters.</span>';
-  } catch { el.innerHTML='<span style="color:var(--red);font-size:12px">Search failed</span>'; }
-};
-
-// Basic lands quick-add
-const BASIC_LANDS=[
-  {name:'Plains',colors:['W'],type_line:'Basic Land — Plains',image_uris:{normal:'https://cards.scryfall.io/normal/front/a/c/ac4abbd3-a72f-442c-9af1-c68b28b3b65c.jpg'}},
-  {name:'Island',colors:['U'],type_line:'Basic Land — Island',image_uris:{normal:'https://cards.scryfall.io/normal/front/8/8/884b91da-a179-4593-bfac-c9d3c6d2b7ea.jpg'}},
-  {name:'Swamp',colors:['B'],type_line:'Basic Land — Swamp',image_uris:{normal:'https://cards.scryfall.io/normal/front/b/f/bfd6e95f-c5a8-4613-b745-3e764819f8f4.jpg'}},
-  {name:'Mountain',colors:['R'],type_line:'Basic Land — Mountain',image_uris:{normal:'https://cards.scryfall.io/normal/front/0/8/08f9a913-bd0b-4d4d-a14c-8e29c9a8e6c8.jpg'}},
-  {name:'Forest',colors:['G'],type_line:'Basic Land — Forest',image_uris:{normal:'https://cards.scryfall.io/normal/front/1/8/18bd50f2-d852-4fd1-b5b8-02b600b28168.jpg'}},
-];
-const LAND_EMOJI={Plains:'☀️',Island:'🌊',Swamp:'🌑',Mountain:'🏔',Forest:'🌲'};
-
-window.addBasicLand=name=>{
-  const land=BASIC_LANDS.find(l=>l.name===name);
-  if(!land) return;
-  buildingDeck.push({...land,id:`basic-${name}-${uid()}`,instanceId:uid()});
-  renderBuilderList();
-  // Update counter
-  updateLandCounts();
-};
-window.removeBasicLand=name=>{
-  const idx=buildingDeck.findLastIndex(c=>c.name===name);
-  if(idx!==-1){ buildingDeck.splice(idx,1); renderBuilderList(); updateLandCounts(); }
-};
-function updateLandCounts(){
-  BASIC_LANDS.forEach(l=>{
-    const el=document.getElementById(`land-count-${l.name}`);
-    if(el) el.textContent=buildingDeck.filter(c=>c.name===l.name).length;
+function renderMyDraftPack(room){
+  const players=room.players||[];
+  const myIdx=players.findIndex(p=>p.uid===currentUser.uid);if(myIdx===-1)return;
+  const myPacks=(room.playerPacks||[])[myIdx]||[];
+  const packIdx=room.currentPackIdx||0;
+  const currentPack=myPacks[packIdx]||[];
+  const myPicks=(room.playerPicks||[])[myIdx]||[];
+  document.getElementById('draft-pack-label').textContent=`Pack ${packIdx+1} of 3 — ${currentPack.length} cards left`;
+  document.getElementById('draft-picks-label').textContent=`${myPicks.length} picked`;
+  const el=document.getElementById('draft-pack-cards');el.innerHTML='';
+  if(currentPack.length===0&&packIdx>=myPacks.length-1){
+    el.innerHTML='<div style="color:var(--green);font-size:13px;text-align:center;padding:20px">✓ All packs done!</div>';
+    document.getElementById('draft-save-btn').style.display='block';return;
+  }
+  currentPack.forEach((card,i)=>{
+    const url=imgUrl(card);if(!url)return;
+    const wrap=document.createElement('div');wrap.className='result-wrap';
+    wrap.innerHTML=`<img src="${url}" class="result-card" loading="lazy">`;
+    wrap.querySelector('img').onclick=()=>showDraftCardZoom(card,myIdx,packIdx,i);
+    el.appendChild(wrap);
   });
 }
 
-function renderBuilderList(){
-  const el=document.getElementById('builder-list');
-  document.getElementById('builder-count').textContent=buildingDeck.length;
-  updateLandCounts();
-  const groups={};
-  buildingDeck.forEach(c=>{ if(!groups[c.name]) groups[c.name]={card:c,count:0,ids:[]}; groups[c.name].count++; groups[c.name].ids.push(c.instanceId); });
-  el.innerHTML='';
-  Object.values(groups).forEach(g=>{
-    const d=document.createElement('div'); d.className='deck-item';
-    d.innerHTML=`<span style="flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.count}× ${g.card.name}</span>`;
-    const rm=document.createElement('button'); rm.className='deck-remove'; rm.textContent='−';
-    rm.onclick=()=>{ const lastId=g.ids[g.ids.length-1]; buildingDeck=buildingDeck.filter(c=>c.instanceId!==lastId); renderBuilderList(); };
-    d.appendChild(rm); el.appendChild(d);
-  });
-}
-
-window.saveDeck=async()=>{
-  const name=document.getElementById('deck-name-inp').value.trim()||'My Deck';
-  const format=document.getElementById('deck-format-sel').value;
-  const deckObj={name,format,cards:buildingDeck,savedAt:Date.now()};
-  if(!currentProfile.decks) currentProfile.decks=[];
-  if(editingDeckIdx>=0) currentProfile.decks[editingDeckIdx]=deckObj;
-  else currentProfile.decks.push(deckObj);
-  await setDoc(doc(db,'users',currentUser.uid),currentProfile);
-  showToast(`"${name}" saved!`); showScreen('mydecks'); renderMyDecks();
-};
-
-// ── Card zoom (builder) ───────────────────────────────────────────────────────
-let zoomCard=null, zoomMode='builder';
-window.showCardZoom=(card,mode)=>{
-  zoomCard=card; zoomMode=mode;
+window.showDraftCardZoom=(card,myIdx,packIdx,cardIdx)=>{
   document.getElementById('zoom-img').src=imgUrl(card);
   document.getElementById('zoom-name').textContent=card.name;
   document.getElementById('zoom-type').textContent=card.type_line||'';
   document.getElementById('zoom-text').textContent=card.oracle_text||card.card_faces?.[0]?.oracle_text||'';
   document.getElementById('zoom-pt').textContent=card.power?`${card.power}/${card.toughness}`:'';
-  document.getElementById('zoom-add-btn').style.display=mode==='collection'?'none':'block';
-  document.getElementById('zoom-save-btn').style.display=mode==='collection'?'block':'none';
+  document.getElementById('zoom-add-btn').style.display='none';
+  document.getElementById('zoom-save-btn').style.display='none';
+  document.getElementById('zoom-pick-btn').style.display='block';
+  window._draftPickFn=async()=>{await draftPickCard(myIdx,packIdx,cardIdx);closeZoom();};
   document.getElementById('card-zoom').style.display='flex';
 };
-window.closeZoom=()=>{ document.getElementById('card-zoom').style.display='none'; };
-window.zoomAddToDeck=()=>{
-  if(!zoomCard) return;
-  buildingDeck.push({...zoomCard,instanceId:uid()});
-  renderBuilderList();
-  showToast(`${zoomCard.name} added!`);
-  closeZoom();
-};
-window.zoomSaveToCollection=async()=>{
-  if(!zoomCard) return;
-  if(!currentProfile.collection) currentProfile.collection=[];
-  if(currentProfile.collection.find(c=>c.id===zoomCard.id)) return showToast('Already saved');
-  currentProfile.collection.push({id:zoomCard.id,name:zoomCard.name,image_uris:zoomCard.image_uris,card_faces:zoomCard.card_faces});
+window.zoomPickDraftCard=()=>{if(window._draftPickFn)window._draftPickFn();};
+
+async function draftPickCard(myIdx,packIdx,cardIdx){
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));const room=snap.data();
+  const playerPacks=room.playerPacks.map(pp=>pp.map(p=>[...p]));
+  const playerPicks=(room.playerPicks||[]).map(p=>[...p]);
+  const card=playerPacks[myIdx][packIdx][cardIdx];
+  playerPacks[myIdx][packIdx].splice(cardIdx,1);
+  playerPicks[myIdx]=[...playerPicks[myIdx],{...card,instanceId:uid()}];
+  let newPackIdx=packIdx;
+  if(playerPacks[myIdx][packIdx].length===0&&packIdx<2)newPackIdx=packIdx+1;
+  const allDone=playerPacks.every(pp=>pp.every(p=>p.length===0));
+  if(allDone){
+    const players=room.players;const matches=[];
+    for(let a=0;a<players.length;a++)for(let b=a+1;b<players.length;b++)
+      matches.push({p1:players[a].uid,p1name:players[a].username,p2:players[b].uid,p2name:players[b].username,winner:null,id:uid()});
+    await updateDoc(doc(db,'rooms',currentRoom.id),{playerPacks,playerPicks,currentPackIdx:newPackIdx,draftPhase:'playing',matches});
+  } else {
+    await updateDoc(doc(db,'rooms',currentRoom.id),{playerPacks,playerPicks,currentPackIdx:newPackIdx});
+  }
+}
+
+window.saveDraftDeckAndPlay=async()=>{
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));const room=snap.data();
+  const myIdx=(room.players||[]).findIndex(p=>p.uid===currentUser.uid);
+  const picks=(room.playerPicks||[])[myIdx]||[];
+  const deckObj={name:`${room.winningTheme||'Draft'} Deck`,format:'draft',cards:picks,savedAt:Date.now()};
+  if(!currentProfile.decks)currentProfile.decks=[];
+  currentProfile.decks.push(deckObj);
+  const deckIdx=currentProfile.decks.length-1;
+  currentProfile.selectedDeckIdx=deckIdx;currentProfile.selectedDeck=picks;
   await setDoc(doc(db,'users',currentUser.uid),currentProfile);
-  showToast(`${zoomCard.name} saved to collection!`); closeZoom(); renderCollection();
+  toast('Draft deck saved! Go play your matches.');
 };
 
-// ── AI Deck Builder ───────────────────────────────────────────────────────────
-window.buildAIDeck=async()=>{
-  const prompt=document.getElementById('ai-deck-prompt').value.trim();
-  const format=document.getElementById('ai-deck-format').value;
-  if(!prompt) return showToast('Describe your deck first!',true);
-  const el=document.getElementById('ai-deck-result');
-  el.innerHTML='<div style="color:var(--muted);font-style:italic;font-size:13px">🤖 Building your deck… this may take a moment…</div>';
-  document.getElementById('ai-build-btn').disabled=true;
-
-  const cardCount=format==='commander'?99:60;
-  const systemPrompt=`You are an expert Magic: The Gathering deck builder. When asked to build a deck, respond ONLY with a JSON object in this exact format:
-{"deckName":"Name Here","description":"Brief description","cards":[{"name":"Card Name","count":4},...],"strategy":"Brief strategy notes"}
-Build a ${cardCount}-card ${format} deck. Include basic lands as needed. Make it functional and synergistic. No extra text, just the JSON.`;
-
-  try {
-    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,system:systemPrompt,
-        messages:[{role:'user',content:`Build me a ${format} deck: ${prompt}`}]})});
-    const data=await res.json();
-    const text=data.content?.[0]?.text||'';
-    const json=JSON.parse(text.replace(/```json|```/g,'').trim());
-
-    el.innerHTML=`<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px;margin-bottom:10px;">
-      <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold);margin-bottom:4px">${json.deckName}</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${json.description}</div>
-      <div style="font-size:11px;color:var(--text);line-height:1.5">${json.strategy}</div>
+function renderDraftBracket(room){
+  const el=document.getElementById('draft-bracket');if(!el)return;
+  const matches=room.matches||[];
+  const wins={};(room.players||[]).forEach(p=>wins[p.uid]=0);
+  matches.forEach(m=>{if(m.winner)wins[m.winner]=(wins[m.winner]||0)+1;});
+  const standings=document.getElementById('draft-standings');
+  if(standings){
+    standings.innerHTML='';
+    const sorted=(room.players||[]).slice().sort((a,b)=>(wins[b.uid]||0)-(wins[a.uid]||0));
+    sorted.forEach((p,i)=>{
+      const d=document.createElement('div');d.style.cssText='display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px';
+      const isMe=p.uid===currentUser.uid;
+      d.innerHTML=`<span style="${isMe?'color:var(--gold)':''}">${i+1}. ${p.username}${isMe?' (you)':''}</span><span style="color:var(--gold);font-family:\'Cinzel\',serif">${wins[p.uid]||0} W</span>`;
+      standings.appendChild(d);
+    });
+  }
+  const done=matches.filter(m=>m.winner).length;
+  const progEl=document.getElementById('draft-match-progress');if(progEl)progEl.textContent=`${done}/${matches.length} matches done`;
+  el.innerHTML='';
+  matches.forEach(m=>{
+    const d=document.createElement('div');d.className='match-row';
+    const isMyMatch=(m.p1===currentUser.uid||m.p2===currentUser.uid)&&!m.winner;
+    d.innerHTML=`<div style="flex:1">
+      <span style="${m.p1===currentUser.uid?'color:var(--gold)':''}">${m.p1name}</span>
+      <span style="color:var(--muted);margin:0 6px">vs</span>
+      <span style="${m.p2===currentUser.uid?'color:var(--gold)':''}">${m.p2name}</span>
     </div>
-    <div style="font-family:'Cinzel',serif;font-size:10px;color:var(--muted);letter-spacing:2px;margin-bottom:6px">CARD LIST</div>
-    <div id="ai-card-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px"></div>
-    <button class="btn-gold" onclick="saveAIDeck(${JSON.stringify(json).replace(/"/g,'&quot;')})">✓ Save This Deck</button>`;
+    ${m.winner?`<span style="color:var(--green);font-size:11px">✓ ${m.winner===m.p1?m.p1name:m.p2name} won</span>`
+      :isMyMatch?`<button class="btn-sm" onclick="reportWin('${m.id}','${m.p1}','${m.p2}')">I Won</button>`
+      :`<span style="color:var(--muted);font-size:11px">Pending</span>`}`;
+    el.appendChild(d);
+  });
+  if(done===matches.length&&matches.length>0&&room.draftPhase!=='results')
+    updateDoc(doc(db,'rooms',currentRoom.id),{draftPhase:'results'});
+}
 
-    json.cards.forEach(c=>{
-      const d=document.createElement('div'); d.className='deck-item';
-      d.innerHTML=`<span style="flex:1;font-size:12px">${c.count}× ${c.name}</span>`;
-      document.getElementById('ai-card-list').appendChild(d);
-    });
-
-    // Fetch actual card data for each
-    window._aiDeckJson=json;
-    window._aiDeckFormat=format;
-  } catch(e) {
-    el.innerHTML=`<div style="color:var(--red);font-size:13px">Failed to build deck. Try again with a clearer description.</div>`;
-  }
-  document.getElementById('ai-build-btn').disabled=false;
+window.reportWin=async(matchId,p1uid,p2uid)=>{
+  const myUid=currentUser.uid;
+  if(myUid!==p1uid&&myUid!==p2uid)return;
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));const room=snap.data();
+  const matches=(room.matches||[]).map(m=>m.id===matchId?{...m,winner:myUid}:m);
+  await updateDoc(doc(db,'rooms',currentRoom.id),{matches});
+  toast('Win reported!');
 };
 
-window.saveAIDeck=async(jsonStr)=>{
-  const json=typeof jsonStr==='string'?JSON.parse(jsonStr):window._aiDeckJson;
-  const format=window._aiDeckFormat||'standard';
-  showToast('Fetching cards from Scryfall…');
-  const cards=[];
-  for(const entry of json.cards){
-    try {
-      const r=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);
-      if(!r.ok) continue;
-      const card=await r.json();
-      for(let i=0;i<(entry.count||1);i++) cards.push({...card,instanceId:uid()});
-    } catch{}
-  }
-  const deckObj={name:json.deckName,format,cards,aiBuilt:true,savedAt:Date.now()};
-  if(!currentProfile.decks) currentProfile.decks=[];
-  currentProfile.decks.push(deckObj);
-  await setDoc(doc(db,'users',currentUser.uid),currentProfile);
-  showToast(`"${json.deckName}" saved! (${cards.length} cards loaded)`);
-  showScreen('mydecks'); renderMyDecks();
-};
+function renderDraftResults(room){
+  const el=document.getElementById('draft-results');if(!el)return;
+  const wins={};(room.players||[]).forEach(p=>wins[p.uid]=0);
+  (room.matches||[]).forEach(m=>{if(m.winner)wins[m.winner]=(wins[m.winner]||0)+1;});
+  const sorted=(room.players||[]).slice().sort((a,b)=>(wins[b.uid]||0)-(wins[a.uid]||0));
+  el.innerHTML=`<div style="text-align:center;margin-bottom:16px">
+    <div style="font-size:40px">🏆</div>
+    <div style="font-family:'Cinzel',serif;font-size:22px;color:var(--gold);letter-spacing:3px">${sorted[0]?.username||'?'}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">Tournament Winner · ${wins[sorted[0]?.uid]||0} wins</div>
+  </div>`;
+  sorted.forEach((p,i)=>{
+    const d=document.createElement('div');d.style.cssText='display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;align-items:center';
+    const medals=['🥇','🥈','🥉'];const isMe=p.uid===currentUser.uid;
+    d.innerHTML=`<span>${medals[i]||`${i+1}.`} <span style="${isMe?'color:var(--gold)':''}">${p.username}${isMe?' (you)':''}</span></span>
+      <span style="color:var(--gold);font-family:'Cinzel',serif">${wins[p.uid]||0} wins</span>`;
+    el.appendChild(d);
+  });
+}
 
-// ── Draft ─────────────────────────────────────────────────────────────────────
-let selectedDraftStyle='';
-window.selectDraftStyle=style=>{
-  selectedDraftStyle=style;
-  document.querySelectorAll('.style-btn').forEach(b=>b.classList.toggle('active',b.dataset.style===style));
-};
-
-window.generateDraft=async()=>{
-  const theme=document.getElementById('draft-theme-inp').value.trim();
-  if(!theme&&!selectedDraftStyle) return showToast('Enter a theme or pick a style!',true);
-  const fullTheme=theme||(selectedDraftStyle+' themed draft');
-  showScreen('draftrunning');
-  document.getElementById('draft-status').textContent='🤖 Generating themed boosters…';
-  document.getElementById('draft-pack-area').innerHTML='';
-
-  const systemPrompt=`You are a Magic: The Gathering draft curator. Generate 3 booster packs (15 cards each) themed around: "${fullTheme}". 
-Respond ONLY with JSON: {"theme":"Theme Name","packs":[[{"name":"Card Name"},...],...]} 
-Each pack has exactly 15 cards. Use real MTG cards that fit the theme. No extra text.`;
-
-  try {
-    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,system:systemPrompt,
-        messages:[{role:'user',content:`Create a draft for theme: ${fullTheme}`}]})});
-    const data=await res.json();
-    const json=JSON.parse(data.content?.[0]?.text.replace(/```json|```/g,'').trim()||'{}');
-
-    document.getElementById('draft-status').textContent=`📦 "${json.theme}" — Fetching card images…`;
-
-    // Fetch all card images
-    draftState={theme:json.theme,packs:[],picks:[],currentPack:0};
-    for(const pack of json.packs){
-      const packCards=[];
-      for(const entry of pack){
-        try {
-          const r=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);
-          if(!r.ok) continue;
-          packCards.push(await r.json());
-        } catch{}
-      }
-      draftState.packs.push(packCards);
+window.leaveDraftRoom=async()=>{
+  if(draftUnsub){draftUnsub();draftUnsub=null;}
+  if(currentRoom){
+    const snap=await getDoc(doc(db,'rooms',currentRoom.id));
+    if(snap.exists()){
+      const room=snap.data();
+      const players=(room.players||[]).filter(p=>p.uid!==currentUser.uid);
+      await updateDoc(doc(db,'rooms',currentRoom.id),{players,status:players.length===0?'empty':room.status,format:players.length===0?null:room.format});
     }
-
-    showDraftPack();
-  } catch(e) {
-    document.getElementById('draft-status').textContent='Failed to generate draft. Try again.';
+    currentRoom=null;
   }
+  if(currentUser)setDoc(doc(db,'online',currentUser.uid),{uid:currentUser.uid,username:currentProfile.username,at:'lobby',ts:Date.now()});
+  goHome();
 };
 
-function showDraftPack(){
-  if(draftState.currentPack>=draftState.packs.length){
-    finishDraft(); return;
-  }
-  const pack=draftState.packs[draftState.currentPack];
-  document.getElementById('draft-status').textContent=`Pack ${draftState.currentPack+1} of ${draftState.packs.length} — Pick 1 card`;
-  const area=document.getElementById('draft-pack-area'); area.innerHTML='';
-  pack.forEach((card,i)=>{
-    const url=imgUrl(card); if(!url) return;
-    const wrap=document.createElement('div'); wrap.className='result-wrap';
-    wrap.innerHTML=`<img src="${url}" class="result-card" loading="lazy" alt="${card.name}">`;
-    wrap.onclick=()=>draftPickCard(card,i);
-    area.appendChild(wrap);
-  });
-}
-
-window.draftPickCard=(card,idx)=>{
-  draftState.picks.push({...card,instanceId:uid()});
-  draftState.packs[draftState.currentPack].splice(idx,1);
-  if(draftState.packs[draftState.currentPack].length===0) draftState.currentPack++;
-  showDraftPack();
-  document.getElementById('draft-picks-count').textContent=draftState.picks.length;
-};
-
-function finishDraft(){
-  document.getElementById('draft-status').textContent=`✓ Draft complete! ${draftState.picks.length} cards picked.`;
-  document.getElementById('draft-pack-area').innerHTML=`
-    <div style="text-align:center;padding:20px;display:flex;flex-direction:column;gap:12px;align-items:center">
-      <div style="font-family:'Cinzel',serif;font-size:18px;color:var(--gold)">Draft Complete!</div>
-      <div style="color:var(--muted);font-size:13px">${draftState.picks.length} cards picked</div>
-      <button class="btn-gold" style="max-width:240px" onclick="saveDraftDeck()">✓ Save as Deck</button>
-      <button class="btn-gold" style="max-width:240px;border-color:var(--border2);color:var(--muted)" onclick="showScreen('lobby');loadLobby()">← Back to Lobby</button>
-    </div>`;
-}
-
-window.saveDraftDeck=async()=>{
-  const deckObj={name:`${draftState.theme} Draft`,format:'draft',cards:draftState.picks,savedAt:Date.now()};
-  if(!currentProfile.decks) currentProfile.decks=[];
-  currentProfile.decks.push(deckObj);
-  await setDoc(doc(db,'users',currentUser.uid),currentProfile);
-  showToast('Draft deck saved!'); showScreen('mydecks'); renderMyDecks();
-};
-
-// ── Collection ────────────────────────────────────────────────────────────────
-window.showCollection=()=>{ showScreen('collection'); renderCollection(); };
-window.searchCollection=async()=>{
-  const q=document.getElementById('coll-search').value.trim(); if(!q) return;
-  const el=document.getElementById('coll-results');
-  el.innerHTML='<span style="color:var(--muted);font-size:12px">Searching…</span>';
-  try {
-    const r=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(q)}&unique=cards`);
-    const d=await r.json(); el.innerHTML='';
-    (d.data||[]).slice(0,20).forEach(card=>{
-      const url=imgUrl(card); if(!url) return;
-      const wrap=document.createElement('div'); wrap.className='result-wrap';
-      wrap.innerHTML=`<img src="${url}" class="result-card" loading="lazy">`;
-      wrap.querySelector('img').onclick=()=>showCardZoom(card,'collection');
-      el.appendChild(wrap);
+// Who's Playing
+async function loadWhoPlaying(){
+  const el=document.getElementById('who-list');el.innerHTML='<div style="color:var(--muted);font-size:13px">Loading…</div>';
+  try{
+    const snap=await getDocs(collection(db,'online'));
+    el.innerHTML='';const now=Date.now();
+    snap.forEach(d=>{
+      const p=d.data();
+      if(now-p.ts>300000||p.at==='offline')return;
+      const div=document.createElement('div');div.className='who-row';
+      const isMe=p.uid===currentUser.uid;
+      const loc=p.at==='lobby'?'In Lobby':p.at.replace('-',' ').replace(/\b\w/g,c=>c.toUpperCase());
+      div.innerHTML=`<span style="font-size:13px;${isMe?'color:var(--gold)':''}">👤 ${p.username}${isMe?' (you)':''}</span>
+        <span style="font-size:11px;color:var(--muted)">${loc}</span>`;
+      el.appendChild(div);
     });
-  } catch { el.innerHTML='<span style="color:var(--red);font-size:12px">Search failed</span>'; }
-};
-function renderCollection(){
-  const el=document.getElementById('coll-saved'); const coll=currentProfile.collection||[];
-  document.getElementById('coll-count').textContent=coll.length; el.innerHTML='';
-  coll.forEach(card=>{
-    const url=imgUrl(card);
-    const wrap=document.createElement('div'); wrap.className='result-wrap'; wrap.style.position='relative';
-    wrap.innerHTML=`<img src="${url}" class="result-card" loading="lazy">
-      <div style="position:absolute;top:2px;right:2px;background:#000a;border-radius:4px;font-size:9px;color:var(--red);padding:1px 4px;cursor:pointer" onclick="removeFromColl('${card.id}')">✕</div>`;
-    wrap.querySelector('img').onclick=()=>previewCard(url);
-    el.appendChild(wrap);
-  });
+    if(el.children.length===0)el.innerHTML='<div style="color:var(--muted);font-size:13px">Nobody online right now.</div>';
+  }catch{el.innerHTML='<div style="color:var(--red);font-size:12px">Failed to load.</div>';}
 }
-window.removeFromColl=async id=>{
-  currentProfile.collection=(currentProfile.collection||[]).filter(c=>c.id!==id);
-  await setDoc(doc(db,'users',currentUser.uid),currentProfile); renderCollection();
-};
 
-// ── Card preview & zoom ───────────────────────────────────────────────────────
-window.previewCard=url=>{ document.getElementById('preview-img').src=url; document.getElementById('card-preview').style.display='flex'; };
-window.closePreview=()=>{ document.getElementById('card-preview').style.display='none'; };
-
-// ── Overlay / toast ───────────────────────────────────────────────────────────
-window.closeOverlay=id=>{ document.getElementById(id).style.display='none'; };
-function showToast(msg,err){
+window.previewCard=url=>{document.getElementById('preview-img').src=url;document.getElementById('card-preview').style.display='flex';};
+window.closePreview=()=>document.getElementById('card-preview').style.display='none';
+window.closeOverlay=id=>document.getElementById(id).style.display='none';
+function toast(msg,err){
   const t=document.getElementById('toast');
-  t.textContent=msg; t.style.background=err?'#5a1a1a':'#1a3a1a'; t.style.borderColor=err?'var(--red)':'var(--green)';
-  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500);
+  t.textContent=msg;t.style.background=err?'#5a1a1a':'#1a3a1a';t.style.borderColor=err?'var(--red)':'var(--green)';
+  t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-setTimeout(()=>{ const i=document.getElementById('intro'); i.classList.add('out'); setTimeout(()=>i.remove(),700); },2500);
+setTimeout(()=>{const i=document.getElementById('intro');if(i){i.classList.add('out');setTimeout(()=>i.remove(),700);}},2500);
 window.showAuthTab('login');
 </script>
-
 <style>
-:root{--gold:#c8a84b;--gold-dim:#7a6530;--gold-glow:#c8a84b44;--bg:#080705;--bg2:#0f0d08;--bg3:#161208;--bg4:#1e1810;--border:#2a2210;--border2:#3a3018;--red:#e05a5a;--green:#5ae07a;--text:#d4c08a;--muted:#7a6a44;--safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);}
+:root{--gold:#c8a84b;--gold-dim:#7a6530;--bg:#080705;--bg2:#0f0d08;--bg3:#161208;--bg4:#1e1810;--border:#2a2210;--border2:#3a3018;--red:#e05a5a;--green:#5ae07a;--purple:#b07ae0;--text:#d4c08a;--muted:#7a6a44;--safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Crimson Text',Georgia,serif;}
-
-/* Intro */
 #intro{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;transition:opacity 0.7s;}
 #intro.out{opacity:0;pointer-events:none;}
 #intro .rune{font-size:60px;animation:runeIn 1s ease forwards;opacity:0;}
@@ -807,43 +970,85 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 #intro .tagline{font-size:11px;letter-spacing:4px;color:var(--muted);text-transform:uppercase;animation:fadeUp 1s 0.9s forwards;opacity:0;}
 @keyframes runeIn{from{opacity:0;transform:scale(0.5) rotate(-20deg)}to{opacity:1;transform:scale(1) rotate(0)}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-
-/* Screens */
 .screen{display:none;height:100%;flex-direction:column;padding-top:var(--safe-top);}
 .screen.active{display:flex;}
-
-/* Top nav bar (shown on most screens) */
-.top-nav{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border2);background:var(--bg2);flex-shrink:0;}
-.top-nav-logo{font-family:'Cinzel',serif;font-size:17px;letter-spacing:4px;color:var(--gold);cursor:pointer;}
-.top-nav-right{display:flex;gap:8px;align-items:center;}
-.home-btn{background:none;border:1px solid var(--border2);color:var(--muted);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:11px;}
-.home-btn:active{background:var(--bg3);}
-
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border2);background:var(--bg2);flex-shrink:0;}
+.top-bar-logo{font-family:'Cinzel',serif;font-size:17px;letter-spacing:4px;color:var(--gold);cursor:pointer;}
+.icon-btn{background:none;border:1px solid var(--border2);color:var(--muted);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:11px;}
+.icon-btn:active{background:var(--bg3);}
+.screen-body{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+.inp{width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:'Crimson Text',serif;outline:none;-webkit-appearance:none;}
+.inp:focus{border-color:var(--gold-dim);}.inp::placeholder{color:var(--muted);}
+.btn-gold{width:100%;padding:12px;font-family:'Cinzel',serif;font-size:12px;letter-spacing:2px;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:10px;cursor:pointer;}
+.btn-gold:active{background:var(--border2);}
+.btn-ask{background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;padding:10px 14px;font-family:'Cinzel',serif;font-size:11px;cursor:pointer;white-space:nowrap;}
+.zone-label{font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;}
 /* Auth */
 #screen-auth{align-items:center;justify-content:center;padding:20px;}
 .auth-box{width:100%;max-width:360px;background:var(--bg3);border:1px solid var(--border2);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:14px;}
 .auth-logo{font-family:'Cinzel',serif;font-size:24px;letter-spacing:4px;color:var(--gold);text-align:center;}
 .auth-tabs{display:flex;gap:6px;}
-.auth-tab{flex:1;padding:8px;text-align:center;font-family:'Cinzel',serif;font-size:11px;letter-spacing:1px;border-radius:8px;cursor:pointer;background:var(--bg4);border:1px solid var(--border2);color:var(--muted);}
+.auth-tab{flex:1;padding:8px;text-align:center;font-family:'Cinzel',serif;font-size:11px;border-radius:8px;cursor:pointer;background:var(--bg4);border:1px solid var(--border2);color:var(--muted);}
 .auth-tab.active{border-color:var(--gold-dim);color:var(--gold);}
 .auth-form{display:flex;flex-direction:column;gap:10px;}
-.inp{width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:'Crimson Text',serif;outline:none;-webkit-appearance:none;}
-.inp:focus{border-color:var(--gold-dim);}.inp::placeholder{color:var(--muted);}
-.btn-gold{width:100%;padding:12px;font-family:'Cinzel',serif;font-size:12px;letter-spacing:2px;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:10px;cursor:pointer;}
-.btn-gold:active{background:var(--border2);}
-
-/* Lobby */
-.lobby-body{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
-.lobby-quick{display:flex;gap:8px;}
-.lobby-quick-btn{flex:1;padding:12px 8px;text-align:center;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;cursor:pointer;font-family:'Cinzel',serif;font-size:10px;letter-spacing:1px;color:var(--muted);}
-.lobby-quick-btn:active{border-color:var(--gold-dim);color:var(--gold);}
-.section-title{font-family:'Cinzel',serif;font-size:11px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;}
-.room-card{background:var(--bg3);border:1px solid var(--border2);border-radius:12px;padding:12px;}
-.room-name{font-family:'Cinzel',serif;font-size:15px;color:var(--gold);letter-spacing:2px;}
+/* Home */
+#screen-home .screen-body{justify-content:center;align-items:center;gap:16px;}
+.home-greeting{font-family:'Cinzel',serif;font-size:20px;color:var(--gold);letter-spacing:3px;text-align:center;}
+.home-cards{display:flex;flex-direction:column;gap:12px;width:100%;max-width:360px;}
+.home-card{background:linear-gradient(135deg,var(--bg3),var(--bg2));border:1px solid var(--border2);border-radius:16px;padding:20px;cursor:pointer;display:flex;align-items:center;gap:16px;}
+.home-card:active{border-color:var(--gold-dim);}
+.home-card-icon{font-size:32px;flex-shrink:0;}
+.home-card-title{font-family:'Cinzel',serif;font-size:15px;color:var(--gold);letter-spacing:2px;}
+.home-card-desc{font-size:12px;color:var(--muted);margin-top:3px;}
+/* Library */
+.lib-tabs{display:flex;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;}
+.lib-tab{flex:1;padding:10px 4px;text-align:center;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;font-family:'Cinzel',serif;}
+.lib-tab.active{color:var(--gold);border-bottom-color:var(--gold);}
+.lib-view{display:none;flex:1;overflow-y:auto;flex-direction:column;padding:12px;gap:10px;}
+.lib-view.active{display:flex;}
+.filter-row{display:flex;gap:5px;flex-wrap:wrap;align-items:center;}
+.color-btn{width:30px;height:30px;border-radius:50%;cursor:pointer;border:2px solid transparent;font-size:13px;display:flex;align-items:center;justify-content:center;opacity:0.5;transition:all 0.15s;flex-shrink:0;}
+.color-btn.active{opacity:1;border-color:var(--gold);}
+.type-btn,.cmc-btn{padding:4px 8px;font-family:'Cinzel',serif;font-size:9px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--border);color:var(--muted);border-radius:6px;cursor:pointer;}
+.type-btn.active,.cmc-btn.active{border-color:var(--gold-dim);color:var(--gold);}
+.results-grid{display:flex;flex-wrap:wrap;gap:6px;}
+.result-wrap{flex-shrink:0;position:relative;}
+.result-card{width:90px;height:126px;border-radius:5px;cursor:pointer;box-shadow:0 2px 8px #0007;display:block;}
+.result-card:active{transform:scale(0.96);}
+.remove-badge{position:absolute;top:2px;right:2px;background:#000a;border-radius:4px;font-size:9px;color:var(--red);padding:1px 4px;cursor:pointer;}
+.deck-row{display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px;gap:8px;}
+.deck-row.selected{border-color:var(--gold-dim);}
+.btn-sm{padding:5px 10px;font-family:'Cinzel',serif;font-size:9px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--border2);color:var(--muted);border-radius:6px;cursor:pointer;white-space:nowrap;}
+.btn-sm.active{border-color:var(--gold-dim);color:var(--gold);}
+.btn-sm.danger{border-color:#5a1a1a;color:var(--red);}
+.btn-sm:active{background:var(--border2);}
+/* Land strip */
+.land-strip{display:flex;gap:6px;overflow-x:auto;}
+.land-chip{display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;padding:6px 8px;min-width:52px;flex-shrink:0;}
+.land-chip .le{font-size:16px;}.land-chip .ln{font-size:7px;color:var(--muted);letter-spacing:1px;font-family:'Cinzel',serif;}
+.land-chip .lv{font-family:'Cinzel',serif;font-size:13px;color:var(--gold);}
+.land-chip .lc{display:flex;gap:2px;align-items:center;}
+.land-pm{background:none;border:1px solid var(--border2);color:var(--muted);border-radius:4px;padding:1px 5px;cursor:pointer;font-size:14px;line-height:1;}
+.land-pm:active{background:var(--border2);}
+/* Deck builder */
+.builder-body{flex:1;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:10px;}
+.builder-cols{display:flex;gap:8px;flex:1;overflow:hidden;min-height:0;}
+.builder-left{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
+.builder-right{width:155px;overflow-y:auto;border-left:1px solid var(--border);padding-left:8px;display:flex;flex-direction:column;gap:4px;}
+.deck-item{display:flex;align-items:center;background:var(--bg4);border-radius:6px;padding:4px 7px;gap:4px;}
+.deck-remove{background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:0 2px;}
+/* Rooms */
+.rooms-grid{display:flex;flex-direction:column;gap:10px;}
+.room-card{background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:14px;}
+.room-name{font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px;}
+.room-seats{display:flex;align-items:center;justify-content:space-around;margin:10px 0;}
+.seat{display:flex;flex-direction:column;align-items:center;gap:4px;opacity:0.4;}
+.seat.taken{opacity:1;}
+.seat-icon{font-size:24px;}
+.seat-name{font-size:11px;color:var(--text);font-family:'Cinzel',serif;letter-spacing:1px;}
 .room-btn{flex:1;padding:8px;font-family:'Cinzel',serif;font-size:10px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;cursor:pointer;}
 .room-btn:active{background:var(--border2);}
-
-/* Room */
+/* Game room */
 .room-header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border2);background:var(--bg2);flex-shrink:0;}
 .room-tabs{display:flex;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0;}
 .room-tab{flex:1;padding:8px 4px;text-align:center;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;font-family:'Cinzel',serif;}
@@ -857,8 +1062,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .zone-mini-label{font-size:8px;color:var(--muted);letter-spacing:1px;font-family:'Cinzel',serif;}
 .deck-pile{width:52px;height:72px;border-radius:6px;background:linear-gradient(135deg,#0d1a0d,#081208);border:2px solid #1a3a1a;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;box-shadow:2px 2px 0 #0d1a0d,3px 3px 0 #0a160a;flex-shrink:0;}
 .deck-pile:active{transform:scale(0.95);}
-.deck-count{font-family:'Cinzel',serif;font-size:16px;color:#2a5a2a;}
-.deck-label{font-size:7px;color:#1a3a1a;letter-spacing:1px;}
+.deck-count-lbl{font-family:'Cinzel',serif;font-size:16px;color:#2a5a2a;}
 .gy-pile{width:52px;height:72px;border-radius:6px;background:#150a0a;border:1px solid #3a1a1a;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;flex-shrink:0;cursor:pointer;}
 .gy-empty{font-size:18px;color:#3a1a1a;}
 .gy-count{position:absolute;top:2px;right:2px;background:#150a0a99;border:1px solid #5a1a1a;border-radius:3px;font-size:8px;color:#8a4a4a;padding:1px 3px;}
@@ -870,11 +1074,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .card-back{width:50px;height:70px;border-radius:4px;background:linear-gradient(135deg,#0d1a0d,#081208);border:1px solid #1a3a1a;flex-shrink:0;}
 .token-chip{width:50px;height:50px;border-radius:6px;background:var(--bg4);border:1px solid var(--border2);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:8px;color:var(--text);cursor:pointer;text-align:center;padding:2px;flex-shrink:0;}
 .token-pt{font-family:'Cinzel',serif;font-size:12px;color:var(--gold);}
-.stack-btn{font-size:8px;color:var(--muted);background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:2px 5px;cursor:pointer;letter-spacing:1px;width:100%;}
+.stack-btn{font-size:8px;color:var(--muted);background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:2px 5px;cursor:pointer;width:100%;}
 .board-controls{display:flex;gap:6px;flex-wrap:wrap;padding:6px;flex-shrink:0;}
 .ctrl-btn{flex:1;min-width:80px;padding:8px 6px;font-family:'Cinzel',serif;font-size:9px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--border2);color:var(--muted);border-radius:8px;cursor:pointer;text-align:center;}
-.ctrl-btn:active{border-color:var(--gold-dim);color:var(--gold);}
 .ctrl-btn.primary{border-color:var(--gold-dim);color:var(--gold);}
+.ctrl-btn:active{border-color:var(--gold-dim);}
 #rv-life{padding:12px;gap:12px;}
 .life-card{background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:16px;text-align:center;}
 .life-name{font-family:'Cinzel',serif;font-size:11px;letter-spacing:3px;color:var(--muted);margin-bottom:6px;}
@@ -893,110 +1097,57 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .rules-msg.user{align-self:flex-end;background:var(--bg4);border:1px solid var(--border2);color:var(--gold);}
 .rules-msg.thinking{font-style:italic;color:var(--muted);}
 .rules-input-row{display:flex;gap:8px;flex-shrink:0;}
-.btn-ask{background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;padding:10px 14px;font-family:'Cinzel',serif;font-size:11px;cursor:pointer;white-space:nowrap;}
-
-/* Screen header */
-.screen-header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border2);background:var(--bg2);flex-shrink:0;}
-.screen-title{font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px;flex:1;}
-.back-btn{background:none;border:1px solid var(--border2);color:var(--muted);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px;}
-.back-btn:active{background:var(--bg3);}
-.screen-body{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
-
-/* My Decks */
-.deck-row{display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px;gap:8px;}
-.deck-row.selected{border-color:var(--gold-dim);}
-.btn-sm{padding:5px 10px;font-family:'Cinzel',serif;font-size:9px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--border2);color:var(--muted);border-radius:6px;cursor:pointer;white-space:nowrap;}
-.btn-sm.danger{border-color:#5a1a1a;color:var(--red);}
-.btn-sm:active{background:var(--border2);}
-
-/* Deck mode select */
-.mode-card{background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:20px;cursor:pointer;transition:border-color 0.2s;}
-.mode-card:active{border-color:var(--gold-dim);}
-.mode-icon{font-size:32px;margin-bottom:8px;}
-.mode-title{font-family:'Cinzel',serif;font-size:15px;color:var(--gold);letter-spacing:2px;margin-bottom:4px;}
-.mode-desc{font-size:12px;color:var(--muted);line-height:1.5;}
-
-/* Deck builder */
-.builder-body{flex:1;overflow:hidden;display:flex;flex-direction:column;gap:8px;padding:10px;}
-.builder-cols{display:flex;gap:8px;flex:1;overflow:hidden;min-height:0;}
-.builder-results-col{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
-.builder-list-col{width:160px;overflow-y:auto;border-left:1px solid var(--border);padding-left:8px;display:flex;flex-direction:column;gap:4px;}
-.result-wrap{flex-shrink:0;position:relative;}
-.result-card{width:64px;height:90px;border-radius:5px;cursor:pointer;box-shadow:0 2px 8px #0007;display:block;}
-.result-card:active{transform:scale(0.96);}
-.results-grid{display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start;}
-.deck-item{display:flex;align-items:center;background:var(--bg4);border-radius:6px;padding:4px 7px;gap:4px;}
-.deck-remove{background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:0 2px;flex-shrink:0;}
-.zone-label{font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;}
-select.inp{cursor:pointer;}
-
-/* Filters */
-.filter-row{display:flex;gap:5px;flex-wrap:wrap;align-items:center;}
-.color-btn{width:30px;height:30px;border-radius:50%;cursor:pointer;border:2px solid transparent;font-size:14px;display:flex;align-items:center;justify-content:center;opacity:0.5;transition:all 0.15s;flex-shrink:0;}
-.color-btn.active{opacity:1;border-color:var(--gold);}
-.type-btn,.cmc-btn{padding:4px 8px;font-family:'Cinzel',serif;font-size:9px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--border);color:var(--muted);border-radius:6px;cursor:pointer;}
-.type-btn.active,.cmc-btn.active{border-color:var(--gold-dim);color:var(--gold);}
-
-/* Basic lands */
-.land-row{display:flex;gap:6px;flex-wrap:wrap;}
-.land-btn{display:flex;flex-direction:column;align-items:center;gap:3px;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;padding:6px 8px;cursor:pointer;min-width:52px;}
-.land-btn .land-emoji{font-size:18px;}
-.land-btn .land-name{font-size:8px;color:var(--muted);letter-spacing:1px;font-family:'Cinzel',serif;}
-.land-btn .land-count-val{font-family:'Cinzel',serif;font-size:13px;color:var(--gold);}
-.land-controls{display:flex;gap:3px;align-items:center;}
-.land-pm{background:none;border:1px solid var(--border2);color:var(--muted);border-radius:4px;padding:1px 6px;cursor:pointer;font-size:14px;line-height:1;}
-.land-pm:active{background:var(--border2);}
-
-/* AI Deck */
-#screen-aideckbuilder .screen-body,.ai-body{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
-.ai-example{background:var(--bg4);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--muted);cursor:pointer;}
-.ai-example:active{border-color:var(--gold-dim);color:var(--gold);}
-
 /* Draft */
-.style-btn{padding:8px 12px;font-family:'Cinzel',serif;font-size:10px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--border2);color:var(--muted);border-radius:8px;cursor:pointer;}
-.style-btn.active{border-color:var(--gold-dim);color:var(--gold);}
-#draft-pack-area{display:flex;flex-wrap:wrap;gap:8px;padding:8px;}
-
-/* Card zoom overlay */
-#card-zoom{position:fixed;inset:0;z-index:500;background:#000e;display:none;align-items:flex-end;justify-content:center;}
-.zoom-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px 16px 0 0;padding:16px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;padding-bottom:calc(16px + var(--safe-bot));animation:slideUp 0.2s ease;display:flex;flex-direction:column;gap:10px;}
-.zoom-inner{display:flex;gap:12px;align-items:flex-start;}
-#zoom-img{width:110px;height:154px;border-radius:8px;flex-shrink:0;}
-.zoom-info{flex:1;}
-.zoom-name{font-family:'Cinzel',serif;font-size:15px;color:var(--gold);margin-bottom:4px;}
-.zoom-type{font-size:11px;color:var(--muted);margin-bottom:6px;letter-spacing:1px;}
-.zoom-text{font-size:13px;color:var(--text);line-height:1.5;}
-.zoom-pt{font-family:'Cinzel',serif;font-size:16px;color:var(--gold);margin-top:6px;}
-.zoom-btns{display:flex;gap:8px;}
-
+#screen-draftroom{overflow:hidden;}
+.draft-phase{display:none;flex:1;overflow-y:auto;flex-direction:column;padding:12px;gap:10px;}
+.draft-phase.active{display:flex;}
+.draft-player-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);}
+.vote-btn{padding:8px 12px;font-family:'Cinzel',serif;font-size:10px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--border2);color:var(--muted);border-radius:8px;cursor:pointer;}
+.vote-btn:active{border-color:var(--purple);color:var(--purple);}
+.match-row{display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px;margin-bottom:6px;gap:8px;}
+/* Who's Playing */
+.who-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
+/* AI */
+.ai-result-box{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px;}
+.ai-example{background:var(--bg4);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--muted);cursor:pointer;margin-bottom:6px;}
+.ai-example:active{border-color:var(--gold-dim);color:var(--gold);}
+/* Picker */
+.picker-deck-row{display:flex;align-items:center;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px;gap:8px;margin-bottom:8px;}
 /* Overlays */
 .overlay{position:fixed;inset:0;background:#000c;z-index:200;display:flex;align-items:flex-end;justify-content:center;}
 .overlay-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto;padding-bottom:calc(20px + var(--safe-bot));animation:slideUp 0.25s ease;}
 @keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
 .overlay-title{font-family:'Cinzel',serif;font-size:16px;color:var(--gold);margin-bottom:14px;}
 .overlay-close{float:right;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;}
+.format-btn{width:100%;padding:14px;font-family:'Cinzel',serif;font-size:12px;letter-spacing:2px;background:var(--bg4);border:1px solid var(--border2);color:var(--text);border-radius:10px;cursor:pointer;margin-bottom:8px;text-align:left;display:flex;align-items:center;gap:12px;}
+.format-btn:active{border-color:var(--gold-dim);}
+.format-icon{font-size:24px;}
 #action-sheet{position:fixed;inset:0;background:#000c;z-index:300;display:none;align-items:flex-end;justify-content:center;}
 .action-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:480px;padding-bottom:calc(20px + var(--safe-bot));animation:slideUp 0.2s ease;}
 .action-title{font-family:'Cinzel',serif;font-size:15px;color:var(--gold);margin-bottom:12px;}
 .btn-action{width:100%;padding:12px;font-family:'Cinzel',serif;font-size:11px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--border2);color:var(--text);border-radius:10px;cursor:pointer;margin-bottom:6px;text-align:left;}
 .btn-action:active{background:var(--border2);}
 .btn-action.danger{border-color:#5a1a1a;color:var(--red);}
-#card-preview{position:fixed;inset:0;z-index:400;background:#000d;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;}
+#card-zoom{position:fixed;inset:0;z-index:500;background:#000e;display:none;align-items:flex-end;justify-content:center;}
+.zoom-box{background:var(--bg2);border:1px solid var(--border2);border-radius:16px 16px 0 0;padding:16px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;padding-bottom:calc(16px + var(--safe-bot));animation:slideUp 0.2s ease;display:flex;flex-direction:column;gap:10px;}
+.zoom-inner{display:flex;flex-direction:column;gap:12px;align-items:center;}
+#zoom-img{width:200px;height:280px;border-radius:8px;flex-shrink:0;object-fit:cover;}
+.zoom-info{flex:1;}
+.zoom-name{font-family:'Cinzel',serif;font-size:15px;color:var(--gold);margin-bottom:4px;}
+.zoom-type{font-size:11px;color:var(--muted);margin-bottom:6px;}
+.zoom-text-body{font-size:13px;color:var(--text);line-height:1.5;}
+.zoom-pt-val{font-family:'Cinzel',serif;font-size:16px;color:var(--gold);margin-top:6px;}
+.zoom-btns{display:flex;gap:8px;flex-wrap:wrap;}
+#card-preview{position:fixed;inset:0;z-index:600;background:#000d;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;}
 #preview-img{max-width:min(280px,85vw);border-radius:12px;box-shadow:0 16px 48px #000;}
-#preview-close-btn{background:var(--bg3);border:1px solid var(--border2);color:var(--muted);border-radius:8px;padding:8px 24px;cursor:pointer;font-family:'Cinzel',serif;font-size:11px;letter-spacing:2px;}
+#preview-close-btn{background:var(--bg3);border:1px solid var(--border2);color:var(--muted);border-radius:8px;padding:8px 24px;cursor:pointer;font-family:'Cinzel',serif;font-size:11px;}
 #toast{position:fixed;bottom:calc(20px + var(--safe-bot));left:50%;transform:translateX(-50%) translateY(20px);background:#1a3a1a;border:1px solid var(--green);color:var(--green);border-radius:10px;padding:10px 20px;font-size:13px;opacity:0;transition:all 0.3s;z-index:999;pointer-events:none;white-space:nowrap;}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 ::-webkit-scrollbar{width:3px;height:3px;}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
 </style>
 </head>
 <body>
-
-<!-- Intro -->
-<div id="intro">
-  <div class="rune">🜲</div>
-  <div class="brand">HEYNS HQ</div>
-  <div class="tagline">The Gathering Table</div>
-</div>
+<div id="intro"><div class="rune">🜲</div><div class="brand">HEYNS HQ</div><div class="tagline">The Gathering Table</div></div>
 
 <!-- AUTH -->
 <div class="screen" id="screen-auth">
@@ -1020,36 +1171,148 @@ select.inp{cursor:pointer;}
   </div>
 </div>
 
-<!-- LOBBY -->
-<div class="screen" id="screen-lobby">
-  <div class="top-nav">
-    <div class="top-nav-logo">✦ HEYNS HQ</div>
-    <div class="top-nav-right">
-      <span style="font-size:11px;color:var(--muted)">👤 <span id="lobby-username"></span></span>
-      <button class="home-btn" onclick="doLogout()">Sign Out</button>
+<!-- HOME -->
+<div class="screen" id="screen-home">
+  <div class="top-bar">
+    <div class="top-bar-logo">✦ HEYNS HQ</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
+      <button class="icon-btn" onclick="doLogout()">Sign Out</button>
     </div>
   </div>
-  <div class="lobby-body">
-    <div class="lobby-quick">
-      <div class="lobby-quick-btn" onclick="showMyDecks()">🃏<br>My Decks<br><span style="color:var(--gold)" id="lobby-deck-count">0</span></div>
-      <div class="lobby-quick-btn" onclick="showCollection()">📚<br>Collection</div>
+  <div class="screen-body">
+    <div class="home-greeting">Welcome back</div>
+    <div class="home-cards">
+      <div class="home-card" onclick="goToLibrary()"><div class="home-card-icon">📚</div><div><div class="home-card-title">Library</div><div class="home-card-desc">Your collection, decks & card search</div></div></div>
+      <div class="home-card" onclick="goToRooms()"><div class="home-card-icon">🏠</div><div><div class="home-card-title">Rooms</div><div class="home-card-desc">Join a table and play</div></div></div>
+      <div class="home-card" onclick="goToWhoPlaying()"><div class="home-card-icon">👥</div><div><div class="home-card-title">Who's Playing</div><div class="home-card-desc">See who's online right now</div></div></div>
     </div>
-    <div class="section-title">Tables</div>
-    <div id="lobby-rooms"></div>
   </div>
 </div>
 
-<!-- ROOM -->
+<!-- LIBRARY -->
+<div class="screen" id="screen-library">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="lib-tabs">
+    <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">🔍 Search</div>
+    <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">📚 Collection</div>
+    <div class="lib-tab" data-tab="decks" onclick="showLibTab('decks')">🃏 Decks</div>
+  </div>
+  <div class="lib-view active" id="lv-search">
+    <div class="zone-label">Colour</div>
+    <div class="filter-row" style="margin-bottom:6px">
+      <button class="color-btn" data-c="W" style="background:#f5f0d0" onclick="toggleColor('W')">☀</button>
+      <button class="color-btn" data-c="U" style="background:#3a6ea8" onclick="toggleColor('U')">💧</button>
+      <button class="color-btn" data-c="B" style="background:#2a2a2a;color:#aaa" onclick="toggleColor('B')">💀</button>
+      <button class="color-btn" data-c="R" style="background:#c84a30" onclick="toggleColor('R')">🔥</button>
+      <button class="color-btn" data-c="G" style="background:#2a6a30" onclick="toggleColor('G')">🌲</button>
+      <button class="color-btn" data-c="C" style="background:#888;color:#fff" onclick="toggleColor('C')">◇</button>
+    </div>
+    <div class="zone-label">Type</div>
+    <div class="filter-row" style="margin-bottom:6px">
+      <button class="type-btn" data-t="creature" onclick="toggleType('creature')">Creature</button>
+      <button class="type-btn" data-t="instant" onclick="toggleType('instant')">Instant</button>
+      <button class="type-btn" data-t="sorcery" onclick="toggleType('sorcery')">Sorcery</button>
+      <button class="type-btn" data-t="enchantment" onclick="toggleType('enchantment')">Enchantment</button>
+      <button class="type-btn" data-t="artifact" onclick="toggleType('artifact')">Artifact</button>
+      <button class="type-btn" data-t="planeswalker" onclick="toggleType('planeswalker')">Planeswalker</button>
+    </div>
+    <div class="zone-label">Mana Cost</div>
+    <div class="filter-row" style="margin-bottom:8px">
+      <button class="cmc-btn" data-cmc="0" onclick="toggleCmc('0')">0</button>
+      <button class="cmc-btn" data-cmc="1" onclick="toggleCmc('1')">1</button>
+      <button class="cmc-btn" data-cmc="2" onclick="toggleCmc('2')">2</button>
+      <button class="cmc-btn" data-cmc="3" onclick="toggleCmc('3')">3</button>
+      <button class="cmc-btn" data-cmc="4" onclick="toggleCmc('4')">4</button>
+      <button class="cmc-btn" data-cmc="5" onclick="toggleCmc('5')">5</button>
+      <button class="cmc-btn" data-cmc=">=6" onclick="toggleCmc('>=6')">6+</button>
+    </div>
+    <div style="display:flex;gap:8px">
+      <input class="inp" id="search-inp-search" placeholder="Card name (optional)…" style="flex:1" onkeydown="if(event.key==='Enter')searchCards('search-results','search')">
+      <button class="btn-ask" onclick="searchCards('search-results','search')">Search</button>
+    </div>
+    <div class="zone-label">Results — tap to zoom, save to collection</div>
+    <div class="results-grid" id="search-results"></div>
+  </div>
+  <div class="lib-view" id="lv-collection">
+    <div style="display:flex;justify-content:space-between;align-items:center"><div class="zone-label" style="margin:0">Saved Cards (<span id="coll-count">0</span>)</div></div>
+    <div class="results-grid" id="coll-saved"></div>
+  </div>
+  <div class="lib-view" id="lv-decks">
+    <div style="font-size:11px;color:var(--muted)" id="decks-count">0 decks</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-gold" style="flex:1" onclick="newDeck()">✎ Build Deck</button>
+      <button class="btn-gold" style="flex:1;border-color:var(--border2);color:var(--muted)" onclick="showAIDeckBuilder()">🤖 AI Build</button>
+    </div>
+    <div id="decks-list"></div>
+  </div>
+</div>
+
+<!-- DECK BUILDER -->
+<div class="screen" id="screen-deckbuilder">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
+    <input class="inp" id="deck-name-inp" placeholder="Deck name…" style="flex:1">
+    <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
+    <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--gold);white-space:nowrap"><span id="builder-count">0</span> cards</div>
+  </div>
+  <div class="builder-body">
+    <div><div class="zone-label">Basic Lands</div>
+      <div class="land-strip">
+        <div class="land-chip"><div class="le">☀️</div><div class="ln">PLAINS</div><div class="lc"><button class="land-pm" onclick="removeBasicLand('Plains')">−</button><span class="lv" id="lc-Plains">0</span><button class="land-pm" onclick="addBasicLand('Plains')">+</button></div></div>
+        <div class="land-chip"><div class="le">🌊</div><div class="ln">ISLAND</div><div class="lc"><button class="land-pm" onclick="removeBasicLand('Island')">−</button><span class="lv" id="lc-Island">0</span><button class="land-pm" onclick="addBasicLand('Island')">+</button></div></div>
+        <div class="land-chip"><div class="le">🌑</div><div class="ln">SWAMP</div><div class="lc"><button class="land-pm" onclick="removeBasicLand('Swamp')">−</button><span class="lv" id="lc-Swamp">0</span><button class="land-pm" onclick="addBasicLand('Swamp')">+</button></div></div>
+        <div class="land-chip"><div class="le">🏔</div><div class="ln">MOUNTAIN</div><div class="lc"><button class="land-pm" onclick="removeBasicLand('Mountain')">−</button><span class="lv" id="lc-Mountain">0</span><button class="land-pm" onclick="addBasicLand('Mountain')">+</button></div></div>
+        <div class="land-chip"><div class="le">🌲</div><div class="ln">FOREST</div><div class="lc"><button class="land-pm" onclick="removeBasicLand('Forest')">−</button><span class="lv" id="lc-Forest">0</span><button class="land-pm" onclick="addBasicLand('Forest')">+</button></div></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <input class="inp" id="search-inp-builder" placeholder="Search cards…" style="flex:1" onkeydown="if(event.key==='Enter')searchCards('builder-results','builder')">
+      <button class="btn-ask" onclick="searchCards('builder-results','builder')">Search</button>
+    </div>
+    <div class="builder-cols">
+      <div class="builder-left"><div class="zone-label">Results — tap to zoom & add</div><div class="results-grid" id="builder-results"></div></div>
+      <div class="builder-right"><div class="zone-label">Deck</div><div id="builder-list"></div></div>
+    </div>
+    <button class="btn-gold" onclick="saveDeck()">✓ Save Deck</button>
+  </div>
+</div>
+
+<!-- AI DECK BUILDER -->
+<div class="screen" id="screen-aideckbuilder">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="screen-body">
+    <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">🤖 AI Deck Builder</div>
+    <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
+    <textarea class="inp" id="ai-deck-prompt" placeholder="Describe your deck e.g. Fast aggressive red burn deck" style="height:80px;resize:none"></textarea>
+    <div class="zone-label">Examples — tap to use</div>
+    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Aggressive red and black zombie deck with sacrifice mechanics</div>
+    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Blue control deck that counters spells and wins with big creatures</div>
+    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Green ramp commander deck with Ghalta as commander</div>
+    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">White and green knights tribal deck</div>
+    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Budget beginner red goblin deck</div>
+    <button class="btn-gold" id="ai-build-btn" onclick="buildAIDeck()">🤖 Build My Deck</button>
+    <div id="ai-deck-result"></div>
+  </div>
+</div>
+
+<!-- ROOMS -->
+<div class="screen" id="screen-rooms">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="screen-body">
+    <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
+    <div class="rooms-grid" id="rooms-grid"></div>
+  </div>
+</div>
+
+<!-- GAME ROOM -->
 <div class="screen" id="screen-room">
   <div class="room-header">
-    <div>
-      <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold)" id="room-title">Table 1</div>
-      <div style="font-size:10px;color:var(--muted)" id="turn-indicator">Waiting…</div>
-    </div>
+    <div><div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold)" id="room-title">Table 1</div><div style="font-size:10px;color:var(--muted)" id="turn-indicator">Waiting…</div></div>
     <div style="display:flex;gap:6px;align-items:center">
       <div style="font-size:10px;background:var(--bg4);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;color:var(--muted)" id="room-role-badge">Playing</div>
-      <button class="home-btn" onclick="goHome()">🏠</button>
-      <button class="back-btn" onclick="leaveRoom()">Leave</button>
+      <button class="icon-btn" onclick="goHome()">🏠</button>
+      <button class="icon-btn" onclick="leaveRoom()">Leave</button>
     </div>
   </div>
   <div class="room-tabs">
@@ -1058,29 +1321,21 @@ select.inp{cursor:pointer;}
     <div class="room-tab" data-tab="rules" onclick="switchRoomTab('rules')">⚖ Rules</div>
     <div class="room-tab" data-tab="info" onclick="switchRoomTab('info')">ℹ Info</div>
   </div>
-  <!-- Board -->
   <div class="room-view active" id="rv-board">
     <div class="board-section">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px" id="room-p2-name">Player 2</div>
         <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="room-p2-life">♥ 20</div>
       </div>
-      <div class="zone-label">Hand</div>
-      <div class="hand-zone" id="hand-p2"></div>
+      <div class="zone-label">Hand</div><div class="hand-zone" id="hand-p2"></div>
       <div class="zone-row">
-        <div class="zone-col">
-          <div class="zone-mini-label">Library</div>
-          <div class="deck-pile" onclick="drawCard()"><div class="deck-count" id="lib-count-p2">0</div><div class="deck-label">DRAW</div></div>
-          <button class="stack-btn" onclick="shuffleLib()">SHUFFLE</button>
-        </div>
-        <div class="zone-col">
-          <div class="zone-mini-label">Graveyard</div>
-          <div class="gy-pile" id="gy-p2"><div class="gy-empty">☠</div></div>
-        </div>
+        <div class="zone-col"><div class="zone-mini-label">Library</div>
+          <div class="deck-pile" onclick="drawCard()"><div class="deck-count-lbl" id="lib-count-p2">0</div><div style="font-size:7px;color:#1a3a1a">DRAW</div></div>
+          <button class="stack-btn" onclick="shuffleLib()">SHUFFLE</button></div>
+        <div class="zone-col"><div class="zone-mini-label">Graveyard</div><div class="gy-pile" id="gy-p2"><div class="gy-empty">☠</div></div></div>
         <div style="flex:1;display:flex;flex-direction:column;gap:4px">
           <div style="display:flex;justify-content:space-between"><div class="zone-label" style="margin:0">Battlefield</div><button class="stack-btn" style="width:auto" onclick="untapAll()">Untap All</button></div>
-          <div class="battlefield" id="bf-p2"></div>
-        </div>
+          <div class="battlefield" id="bf-p2"></div></div>
       </div>
     </div>
     <div style="border-top:1px solid var(--border);text-align:center;position:relative;flex-shrink:0;margin:0 8px"><span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--bg);color:var(--border2);padding:0 8px">⊕</span></div>
@@ -1090,22 +1345,15 @@ select.inp{cursor:pointer;}
         <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="room-p1-life">♥ 20</div>
       </div>
       <div class="zone-row">
-        <div class="zone-col">
-          <div class="zone-mini-label">Library</div>
-          <div class="deck-pile" onclick="drawCard()"><div class="deck-count" id="lib-count-p1">0</div><div class="deck-label">DRAW</div></div>
-          <button class="stack-btn" onclick="shuffleLib()">SHUFFLE</button>
-        </div>
-        <div class="zone-col">
-          <div class="zone-mini-label">Graveyard</div>
-          <div class="gy-pile" id="gy-p1"><div class="gy-empty">☠</div></div>
-        </div>
+        <div class="zone-col"><div class="zone-mini-label">Library</div>
+          <div class="deck-pile" onclick="drawCard()"><div class="deck-count-lbl" id="lib-count-p1">0</div><div style="font-size:7px;color:#1a3a1a">DRAW</div></div>
+          <button class="stack-btn" onclick="shuffleLib()">SHUFFLE</button></div>
+        <div class="zone-col"><div class="zone-mini-label">Graveyard</div><div class="gy-pile" id="gy-p1"><div class="gy-empty">☠</div></div></div>
         <div style="flex:1;display:flex;flex-direction:column;gap:4px">
           <div style="display:flex;justify-content:space-between"><div class="zone-label" style="margin:0">Battlefield</div><button class="stack-btn" style="width:auto" onclick="untapAll()">Untap All</button></div>
-          <div class="battlefield" id="bf-p1"></div>
-        </div>
+          <div class="battlefield" id="bf-p1"></div></div>
       </div>
-      <div class="zone-label">Hand</div>
-      <div class="hand-zone" id="hand-p1"></div>
+      <div class="zone-label">Hand</div><div class="hand-zone" id="hand-p1"></div>
     </div>
     <div class="board-controls">
       <button class="ctrl-btn primary" onclick="startGame()">▶ Start</button>
@@ -1113,28 +1361,22 @@ select.inp{cursor:pointer;}
       <button class="ctrl-btn" onclick="showTokenOverlay()">✦ Token</button>
     </div>
   </div>
-  <!-- Life -->
   <div class="room-view" id="rv-life">
     <div class="life-card"><div class="life-name" id="life-p2-name">PLAYER 2</div><div class="life-num" id="life-p2-num">20</div>
-      <div class="life-btns">
-        <button class="life-btn minus" onclick="changeLife(1,-10)">−10</button><button class="life-btn minus" onclick="changeLife(1,-5)">−5</button><button class="life-btn minus" onclick="changeLife(1,-1)">−1</button><button class="life-btn plus" onclick="changeLife(1,1)">+1</button><button class="life-btn plus" onclick="changeLife(1,5)">+5</button>
-      </div></div>
+      <div class="life-btns"><button class="life-btn minus" onclick="changeLife(1,-10)">−10</button><button class="life-btn minus" onclick="changeLife(1,-5)">−5</button><button class="life-btn minus" onclick="changeLife(1,-1)">−1</button><button class="life-btn plus" onclick="changeLife(1,1)">+1</button><button class="life-btn plus" onclick="changeLife(1,5)">+5</button></div></div>
     <div style="border-top:1px solid var(--border)"></div>
     <div class="life-card"><div class="life-name" id="life-p1-name">PLAYER 1</div><div class="life-num" id="life-p1-num">20</div>
-      <div class="life-btns">
-        <button class="life-btn minus" onclick="changeLife(0,-10)">−10</button><button class="life-btn minus" onclick="changeLife(0,-5)">−5</button><button class="life-btn minus" onclick="changeLife(0,-1)">−1</button><button class="life-btn plus" onclick="changeLife(0,1)">+1</button><button class="life-btn plus" onclick="changeLife(0,5)">+5</button>
-      </div></div>
+      <div class="life-btns"><button class="life-btn minus" onclick="changeLife(0,-10)">−10</button><button class="life-btn minus" onclick="changeLife(0,-5)">−5</button><button class="life-btn minus" onclick="changeLife(0,-1)">−1</button><button class="life-btn plus" onclick="changeLife(0,1)">+1</button><button class="life-btn plus" onclick="changeLife(0,5)">+5</button></div></div>
   </div>
-  <!-- Rules -->
   <div class="room-view" id="rv-rules">
-    <div class="rules-msgs" id="rules-msgs"><div class="rules-msg ai">Ask me anything about MTG rules! e.g. <em>"Does deathtouch work with trample?"</em></div></div>
+    <div class="rules-msgs" id="rules-msgs"><div class="rules-msg ai">Ask me anything about MTG rules!</div></div>
     <div class="rules-input-row"><input class="inp" id="rules-inp" placeholder="Ask a rules question…" onkeydown="if(event.key==='Enter')askRules()"><button class="btn-ask" onclick="askRules()">Ask</button></div>
   </div>
-  <!-- Info -->
   <div class="room-view" id="rv-info" style="padding:12px;gap:8px">
     <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px">
       <div class="zone-label">Players</div>
-      <div id="info-p1" style="font-size:14px">—</div><div id="info-p2" style="font-size:14px">—</div>
+      <div style="font-size:14px;margin-bottom:4px" id="room-p1-info">—</div>
+      <div style="font-size:14px" id="room-p2-info">—</div>
     </div>
     <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px">
       <div class="zone-label">Spectators</div>
@@ -1143,229 +1385,112 @@ select.inp{cursor:pointer;}
   </div>
 </div>
 
-<!-- MY DECKS -->
-<div class="screen" id="screen-mydecks">
-  <div class="top-nav"><div class="top-nav-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="home-btn" onclick="goHome()">🏠 Home</button></div>
-  <div class="screen-header"><div class="screen-title">My Decks</div><div style="font-size:11px;color:var(--muted)" id="deck-count-label"></div></div>
-  <div class="screen-body">
-    <button class="btn-gold" onclick="showDeckModeSelect()">+ New Deck</button>
-    <div id="my-decks-list"></div>
+<!-- DRAFT ROOM -->
+<div class="screen" id="screen-draftroom">
+  <div class="top-bar">
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div>
+    <div style="display:flex;gap:6px"><button class="icon-btn" onclick="goHome()">🏠</button><button class="icon-btn" onclick="leaveDraftRoom()">Leave</button></div>
   </div>
-</div>
-
-<!-- DECK MODE SELECT -->
-<div class="screen" id="screen-deckmode">
-  <div class="top-nav"><div class="top-nav-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="home-btn" onclick="goToMyDecks()">← Back</button></div>
-  <div class="screen-header"><div class="screen-title">Build a Deck</div></div>
-  <div class="screen-body">
-    <div class="mode-card" onclick="startManualBuild()">
-      <div class="mode-icon">🃏</div>
-      <div class="mode-title">Build Your Own</div>
-      <div class="mode-desc">Search cards with filters by colour, type, mana cost. Add basic lands easily. Full control over every card.</div>
-    </div>
-    <div class="mode-card" onclick="showAIDeckBuilder()">
-      <div class="mode-icon">🤖</div>
-      <div class="mode-title">AI Deck Builder</div>
-      <div class="mode-desc">Tell the AI what kind of deck you want and it builds a full deck for you. Great for beginners or trying new strategies.</div>
-    </div>
-    <div class="mode-card" onclick="showDraftSetup()">
-      <div class="mode-icon">📦</div>
-      <div class="mode-title">Draft Night</div>
-      <div class="mode-desc">Pick a theme or style and the AI generates themed booster packs. Open packs, pick cards, build your deck, then play.</div>
-    </div>
+  <div style="padding:8px 14px;border-bottom:1px solid var(--border2);flex-shrink:0">
+    <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold)" id="draft-room-title">Draft Room</div>
+    <div style="font-size:10px;color:var(--muted)">Draft Night Tournament</div>
   </div>
-</div>
-
-<!-- MANUAL DECK BUILDER -->
-<div class="screen" id="screen-deckbuilder">
-  <div class="top-nav"><div class="top-nav-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="home-btn" onclick="goToMyDecks()">← Back</button></div>
-  <div class="screen-header">
-    <div class="screen-title">Deck Builder</div>
-    <div style="font-size:11px;color:var(--gold)"><span id="builder-count">0</span> cards</div>
-  </div>
-  <div class="builder-body">
+  <!-- Lobby/voting phase -->
+  <div class="draft-phase active" id="dp-lobby">
+    <div class="zone-label">Players in Room</div>
+    <div id="draft-players-list"></div>
+    <div class="zone-label" style="margin-top:8px">Vote for a Theme</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <button class="vote-btn" onclick="voteDraftTheme('Zombie Apocalypse')">🧟 Zombie Apocalypse</button>
+      <button class="vote-btn" onclick="voteDraftTheme('Dragons & Fire')">🐉 Dragons & Fire</button>
+      <button class="vote-btn" onclick="voteDraftTheme('Knights & Warriors')">⚔️ Knights & Warriors</button>
+      <button class="vote-btn" onclick="voteDraftTheme('Graveyard & Sacrifice')">☠️ Graveyard & Sacrifice</button>
+      <button class="vote-btn" onclick="voteDraftTheme('Elves & Nature')">🌿 Elves & Nature</button>
+      <button class="vote-btn" onclick="voteDraftTheme('Spells & Wizards')">🔮 Spells & Wizards</button>
+      <button class="vote-btn" onclick="voteDraftTheme('Pirates & Sea Monsters')">🏴‍☠️ Pirates</button>
+      <button class="vote-btn" onclick="voteDraftTheme('Vampires & Darkness')">🧛 Vampires</button>
+    </div>
     <div style="display:flex;gap:8px">
-      <input class="inp" id="deck-name-inp" placeholder="Deck name…" style="flex:1">
-      <select class="inp" id="deck-format-sel" style="width:110px">
-        <option value="standard">Standard 60</option>
-        <option value="commander">Commander 100</option>
-        <option value="draft">Draft</option>
-      </select>
+      <input class="inp" id="draft-custom-theme" placeholder="Or type a custom theme…" style="flex:1">
+      <button class="btn-ask" onclick="draftCustomVote()">Vote</button>
     </div>
-    <!-- Basic lands -->
-    <div>
-      <div class="zone-label">Basic Lands</div>
-      <div class="land-row">
-        <div class="land-btn">
-          <div class="land-emoji">☀️</div>
-          <div class="land-name">PLAINS</div>
-          <div class="land-controls"><button class="land-pm" onclick="removeBasicLand('Plains')">−</button><span class="land-count-val" id="land-count-Plains">0</span><button class="land-pm" onclick="addBasicLand('Plains')">+</button></div>
-        </div>
-        <div class="land-btn">
-          <div class="land-emoji">🌊</div>
-          <div class="land-name">ISLAND</div>
-          <div class="land-controls"><button class="land-pm" onclick="removeBasicLand('Island')">−</button><span class="land-count-val" id="land-count-Island">0</span><button class="land-pm" onclick="addBasicLand('Island')">+</button></div>
-        </div>
-        <div class="land-btn">
-          <div class="land-emoji">🌑</div>
-          <div class="land-name">SWAMP</div>
-          <div class="land-controls"><button class="land-pm" onclick="removeBasicLand('Swamp')">−</button><span class="land-count-val" id="land-count-Swamp">0</span><button class="land-pm" onclick="addBasicLand('Swamp')">+</button></div>
-        </div>
-        <div class="land-btn">
-          <div class="land-emoji">🏔</div>
-          <div class="land-name">MOUNTAIN</div>
-          <div class="land-controls"><button class="land-pm" onclick="removeBasicLand('Mountain')">−</button><span class="land-count-val" id="land-count-Mountain">0</span><button class="land-pm" onclick="addBasicLand('Mountain')">+</button></div>
-        </div>
-        <div class="land-btn">
-          <div class="land-emoji">🌲</div>
-          <div class="land-name">FOREST</div>
-          <div class="land-controls"><button class="land-pm" onclick="removeBasicLand('Forest')">−</button><span class="land-count-val" id="land-count-Forest">0</span><button class="land-pm" onclick="addBasicLand('Forest')">+</button></div>
-        </div>
-      </div>
+    <div class="zone-label">Current Votes</div>
+    <div id="draft-vote-tally"></div>
+    <button class="btn-gold" onclick="setDraftReady()">✓ I'm Ready — Start When All Ready</button>
+  </div>
+  <!-- Voting phase (duplicate display) -->
+  <div class="draft-phase" id="dp-voting">
+    <div class="zone-label">Players in Room</div>
+    <div id="draft-players-list-v"></div>
+    <div style="font-size:13px;color:var(--muted);text-align:center;padding:20px">Voting in progress…</div>
+    <button class="btn-gold" onclick="setDraftReady()">✓ I'm Ready</button>
+  </div>
+  <!-- Generating -->
+  <div class="draft-phase" id="dp-generating">
+    <div style="text-align:center;padding:40px 20px">
+      <div style="font-size:36px;margin-bottom:12px">🤖</div>
+      <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">Generating Packs…</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:8px">AI is creating your themed booster packs. This may take a moment.</div>
     </div>
-    <!-- Filters -->
-    <div>
-      <div class="zone-label">Filters</div>
-      <div class="filter-row" style="margin-bottom:6px">
-        <button class="color-btn" data-c="W" style="background:#f5f0d0" onclick="toggleColor('W')" title="White">☀</button>
-        <button class="color-btn" data-c="U" style="background:#3a6ea8" onclick="toggleColor('U')" title="Blue">💧</button>
-        <button class="color-btn" data-c="B" style="background:#2a2a2a;color:#aaa" onclick="toggleColor('B')" title="Black">💀</button>
-        <button class="color-btn" data-c="R" style="background:#c84a30" onclick="toggleColor('R')" title="Red">🔥</button>
-        <button class="color-btn" data-c="G" style="background:#2a6a30" onclick="toggleColor('G')" title="Green">🌲</button>
-        <button class="color-btn" data-c="C" style="background:#888;color:#fff" onclick="toggleColor('C')" title="Colorless">◇</button>
-      </div>
-      <div class="filter-row" style="margin-bottom:6px">
-        <button class="type-btn" data-t="creature" onclick="toggleType('creature')">Creature</button>
-        <button class="type-btn" data-t="instant" onclick="toggleType('instant')">Instant</button>
-        <button class="type-btn" data-t="sorcery" onclick="toggleType('sorcery')">Sorcery</button>
-        <button class="type-btn" data-t="enchantment" onclick="toggleType('enchantment')">Enchantment</button>
-        <button class="type-btn" data-t="artifact" onclick="toggleType('artifact')">Artifact</button>
-        <button class="type-btn" data-t="planeswalker" onclick="toggleType('planeswalker')">Planeswalker</button>
-        <button class="type-btn" data-t="land" onclick="toggleType('land')">Land</button>
-      </div>
-      <div class="filter-row">
-        <span style="font-size:10px;color:var(--muted);margin-right:4px">CMC:</span>
-        <button class="cmc-btn" data-cmc="0" onclick="toggleCmc('0')">0</button>
-        <button class="cmc-btn" data-cmc="1" onclick="toggleCmc('1')">1</button>
-        <button class="cmc-btn" data-cmc="2" onclick="toggleCmc('2')">2</button>
-        <button class="cmc-btn" data-cmc="3" onclick="toggleCmc('3')">3</button>
-        <button class="cmc-btn" data-cmc="4" onclick="toggleCmc('4')">4</button>
-        <button class="cmc-btn" data-cmc="5" onclick="toggleCmc('5')">5</button>
-        <button class="cmc-btn" data-cmc=">=6" onclick="toggleCmc('>=6')">6+</button>
-      </div>
+  </div>
+  <!-- Picking -->
+  <div class="draft-phase" id="dp-picking">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="font-family:'Cinzel',serif;font-size:12px;color:var(--gold)" id="draft-pack-label">Pack 1 of 3</div>
+      <div style="font-size:11px;color:var(--muted)" id="draft-picks-label">0 picked</div>
     </div>
-    <!-- Search -->
-    <div style="display:flex;gap:8px">
-      <input class="inp" id="builder-search" placeholder="Search by name (optional)…" style="flex:1" onkeydown="if(event.key==='Enter')searchBuilderCards()">
-      <button class="btn-ask" onclick="searchBuilderCards()">Search</button>
+    <div style="font-size:12px;color:var(--muted)">Tap a card to zoom in and pick it</div>
+    <div class="results-grid" id="draft-pack-cards"></div>
+    <button class="btn-gold" id="draft-save-btn" style="display:none" onclick="saveDraftDeckAndPlay()">✓ Save Draft Deck</button>
+  </div>
+  <!-- Playing (bracket) -->
+  <div class="draft-phase" id="dp-playing">
+    <div class="zone-label">Standings</div>
+    <div id="draft-standings"></div>
+    <div class="zone-label" style="margin-top:10px">Matches</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px" id="draft-match-progress"></div>
+    <div id="draft-bracket"></div>
+    <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px;margin-top:8px;font-size:12px;color:var(--muted);line-height:1.6">
+      💡 Go to <strong style="color:var(--gold)">Rooms</strong> to play your matches using your draft deck. Come back here to report wins.
     </div>
-    <div class="builder-cols">
-      <div class="builder-results-col">
-        <div class="zone-label">Results — tap to zoom & add</div>
-        <div class="results-grid" id="builder-results"></div>
-      </div>
-      <div class="builder-list-col">
-        <div class="zone-label">Deck</div>
-        <div id="builder-list"></div>
-      </div>
-    </div>
-    <button class="btn-gold" onclick="saveDeck()">✓ Save Deck</button>
+  </div>
+  <!-- Results -->
+  <div class="draft-phase" id="dp-results">
+    <div id="draft-results"></div>
   </div>
 </div>
 
-<!-- AI DECK BUILDER -->
-<div class="screen" id="screen-aideckbuilder">
-  <div class="top-nav"><div class="top-nav-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="home-btn" onclick="showScreen('deckmode')">← Back</button></div>
-  <div class="screen-header"><div class="screen-title">🤖 AI Deck Builder</div></div>
+<!-- WHO'S PLAYING -->
+<div class="screen" id="screen-whoplaying">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
-    <select class="inp" id="ai-deck-format">
-      <option value="standard">Standard (60 cards)</option>
-      <option value="commander">Commander (100 cards)</option>
-    </select>
-    <div>
-      <div class="zone-label" style="margin-bottom:6px">Describe your deck</div>
-      <textarea class="inp" id="ai-deck-prompt" placeholder="e.g. Fast aggressive red deck that burns the opponent quickly" style="height:80px;resize:none"></textarea>
-    </div>
-    <div class="zone-label">Examples — tap to use</div>
-    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Aggressive red and black zombie deck with sacrifice mechanics</div>
-    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Blue control deck that counters spells and wins with big creatures</div>
-    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Green ramp commander deck with Ghalta as the commander</div>
-    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">White and green knights and warriors tribal deck</div>
-    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Budget beginner friendly red deck with lots of goblins</div>
-    <button class="btn-gold" id="ai-build-btn" onclick="buildAIDeck()">🤖 Build My Deck</button>
-    <div id="ai-deck-result"></div>
+    <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
+    <div id="who-list"></div>
+    <button class="btn-gold" style="border-color:var(--border2);color:var(--muted)" onclick="loadWhoPlaying()">↺ Refresh</button>
   </div>
 </div>
 
-<!-- DRAFT SETUP -->
-<div class="screen" id="screen-draftsetup">
-  <div class="top-nav"><div class="top-nav-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="home-btn" onclick="showScreen('deckmode')">← Back</button></div>
-  <div class="screen-header"><div class="screen-title">📦 Draft Night Setup</div></div>
-  <div class="screen-body">
-    <div class="zone-label">Choose a style</div>
-    <div id="draft-style-btns" style="display:flex;flex-wrap:wrap;gap:8px;">
-      <button class="style-btn" data-style="zombie apocalypse" onclick="selectDraftStyle('zombie apocalypse')">🧟 Zombie Apocalypse</button>
-      <button class="style-btn" data-style="dragons and fire" onclick="selectDraftStyle('dragons and fire')">🐉 Dragons & Fire</button>
-      <button class="style-btn" data-style="knights and warriors" onclick="selectDraftStyle('knights and warriors')">⚔️ Knights & Warriors</button>
-      <button class="style-btn" data-style="graveyard and sacrifice" onclick="selectDraftStyle('graveyard and sacrifice')">☠️ Graveyard & Sacrifice</button>
-      <button class="style-btn" data-style="elves and nature" onclick="selectDraftStyle('elves and nature')">🌿 Elves & Nature</button>
-      <button class="style-btn" data-style="spells and wizards" onclick="selectDraftStyle('spells and wizards')">🔮 Spells & Wizards</button>
-      <button class="style-btn" data-style="pirates and sea monsters" onclick="selectDraftStyle('pirates and sea monsters')">🏴‍☠️ Pirates & Sea Monsters</button>
-      <button class="style-btn" data-style="vampires and darkness" onclick="selectDraftStyle('vampires and darkness')">🧛 Vampires & Darkness</button>
-    </div>
-    <div class="zone-label" style="margin-top:8px">Or enter your own theme</div>
-    <input class="inp" id="draft-theme-inp" placeholder="e.g. Futuristic robots and artifacts">
-    <button class="btn-gold" onclick="generateDraft()">🎲 Generate Draft Packs</button>
+<!-- FORMAT PICKER OVERLAY -->
+<div class="overlay" id="overlay-format" style="display:none">
+  <div class="overlay-box">
+    <button class="overlay-close" onclick="closeOverlay('overlay-format')">✕</button>
+    <div class="overlay-title">Choose Format — <span id="format-room-title"></span></div>
+    <button class="format-btn" onclick="selectFormat('standard')"><div class="format-icon">🃏</div><div><div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">Standard 60</div><div style="font-size:11px;color:var(--muted)">60 card deck, normal rules</div></div></button>
+    <button class="format-btn" onclick="selectFormat('commander')"><div class="format-icon">👑</div><div><div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">Commander 100</div><div style="font-size:11px;color:var(--muted)">100 card singleton with a commander</div></div></button>
+    <button class="format-btn" onclick="selectFormat('draft')"><div class="format-icon">📦</div><div><div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">Draft Night</div><div style="font-size:11px;color:var(--muted)">Up to 6 players, AI themed packs, round robin tournament</div></div></button>
   </div>
 </div>
 
-<!-- DRAFT RUNNING -->
-<div class="screen" id="screen-draftrunning">
-  <div class="top-nav"><div class="top-nav-logo" onclick="goHome()">✦ HEYNS HQ</div><div style="font-size:11px;color:var(--gold)">Picks: <span id="draft-picks-count">0</span></div></div>
-  <div class="screen-header"><div class="screen-title">📦 Draft</div><div style="font-size:11px;color:var(--muted)" id="draft-status">Loading…</div></div>
-  <div style="flex:1;overflow-y:auto">
-    <div id="draft-pack-area" class="results-grid" style="padding:10px"></div>
+<!-- DECK PICKER OVERLAY -->
+<div class="overlay" id="overlay-deckpicker" style="display:none">
+  <div class="overlay-box">
+    <button class="overlay-close" onclick="closeOverlay('overlay-deckpicker')">✕</button>
+    <div class="overlay-title" id="deck-picker-title">Pick Your Deck</div>
+    <div id="deck-picker-list"></div>
   </div>
 </div>
 
-<!-- COLLECTION -->
-<div class="screen" id="screen-collection">
-  <div class="top-nav"><div class="top-nav-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="home-btn" onclick="goHome()">🏠 Home</button></div>
-  <div class="screen-header"><div class="screen-title">📚 My Collection</div><div style="font-size:11px;color:var(--muted)"><span id="coll-count">0</span> saved</div></div>
-  <div class="screen-body">
-    <div style="display:flex;gap:8px">
-      <input class="inp" id="coll-search" placeholder="Search cards to add…" style="flex:1" onkeydown="if(event.key==='Enter')searchCollection()">
-      <button class="btn-ask" onclick="searchCollection()">Search</button>
-    </div>
-    <div class="zone-label">Search Results — tap to zoom</div>
-    <div class="results-grid" id="coll-results"></div>
-    <div class="zone-label">Saved Cards</div>
-    <div class="results-grid" id="coll-saved"></div>
-  </div>
-</div>
-
-<!-- Card zoom overlay -->
-<div id="card-zoom">
-  <div class="zoom-box">
-    <div class="zoom-inner">
-      <img id="zoom-img" src="" alt="">
-      <div class="zoom-info">
-        <div class="zoom-name" id="zoom-name"></div>
-        <div class="zoom-type" id="zoom-type"></div>
-        <div class="zoom-text" id="zoom-text"></div>
-        <div class="zoom-pt" id="zoom-pt"></div>
-      </div>
-    </div>
-    <div class="zoom-btns">
-      <button class="btn-gold" id="zoom-add-btn" onclick="zoomAddToDeck()" style="flex:1">+ Add to Deck</button>
-      <button class="btn-gold" id="zoom-save-btn" onclick="zoomSaveToCollection()" style="flex:1;display:none">+ Save to Collection</button>
-      <button class="btn-gold" id="zoom-pick-btn" onclick="zoomPickDraftCard()" style="flex:1;display:none">✓ Pick This Card</button>
-      <button class="btn-gold" style="flex:1;border-color:var(--border2);color:var(--muted)" onclick="closeZoom()">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- Token overlay -->
+<!-- TOKEN OVERLAY -->
 <div class="overlay" id="overlay-tokens" style="display:none">
   <div class="overlay-box">
     <button class="overlay-close" onclick="closeOverlay('overlay-tokens')">✕</button>
@@ -1388,7 +1513,7 @@ select.inp{cursor:pointer;}
   </div>
 </div>
 
-<!-- Action sheet -->
+<!-- ACTION SHEET -->
 <div id="action-sheet">
   <div class="action-box">
     <div class="action-title" id="action-title">Card Actions</div>
@@ -1397,14 +1522,34 @@ select.inp{cursor:pointer;}
   </div>
 </div>
 
-<!-- Card preview -->
+<!-- CARD ZOOM -->
+<div id="card-zoom">
+  <div class="zoom-box">
+    <div class="zoom-inner">
+      <img id="zoom-img" src="" alt="">
+      <div class="zoom-info">
+        <div class="zoom-name" id="zoom-name"></div>
+        <div class="zoom-type" id="zoom-type"></div>
+        <div class="zoom-text-body" id="zoom-text"></div>
+        <div class="zoom-pt-val" id="zoom-pt"></div>
+      </div>
+    </div>
+    <div class="zoom-btns">
+      <button class="btn-gold" id="zoom-add-btn" onclick="zoomAddToDeck()" style="flex:1;display:none">+ Add to Deck</button>
+      <button class="btn-gold" id="zoom-save-btn" onclick="zoomSaveToCollection()" style="flex:1;display:none">+ Save to Collection</button>
+      <button class="btn-gold" id="zoom-pick-btn" onclick="zoomPickDraftCard()" style="flex:1;display:none;border-color:var(--green);color:var(--green)">✓ Pick This Card</button>
+      <button class="btn-gold" style="flex:1;border-color:var(--border2);color:var(--muted)" onclick="closeZoom()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- CARD PREVIEW -->
 <div id="card-preview" onclick="closePreview()">
   <img id="preview-img" src="" alt="">
   <button id="preview-close-btn" onclick="closePreview()">CLOSE</button>
 </div>
 
-<!-- Toast -->
+<!-- TOAST -->
 <div id="toast"></div>
-
 </body>
 </html>
