@@ -1038,14 +1038,14 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .deck-item{display:flex;align-items:center;background:var(--bg4);border-radius:6px;padding:4px 7px;gap:4px;}
 .deck-remove{background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:0 2px;}
 /* Rooms */
-.rooms-grid{display:flex;flex-direction:column;gap:10px;}
-.room-card{background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:14px;}
+.rooms-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.room-card{background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:16px;min-height:160px;}
 .room-name{font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px;}
-.room-seats{display:flex;align-items:center;justify-content:space-around;margin:10px 0;}
-.seat{display:flex;flex-direction:column;align-items:center;gap:4px;opacity:0.4;}
+.room-seats{display:flex;align-items:center;justify-content:space-around;margin:12px 0;background:var(--bg4);border-radius:10px;padding:12px;}
+.seat{display:flex;flex-direction:column;align-items:center;gap:4px;opacity:0.4;min-width:80px;}
 .seat.taken{opacity:1;}
-.seat-icon{font-size:24px;}
-.seat-name{font-size:11px;color:var(--text);font-family:'Cinzel',serif;letter-spacing:1px;}
+.seat-icon{font-size:28px;}
+.seat-name{font-size:12px;color:var(--text);font-family:'Cinzel',serif;letter-spacing:1px;text-align:center;}
 .room-btn{flex:1;padding:8px;font-family:'Cinzel',serif;font-size:10px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;cursor:pointer;}
 .room-btn:active{background:var(--border2);}
 /* Game room */
