@@ -1,1 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NotNuked">
+<title>Heyns HQ</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #c8a84b;
+    --gold-dim: #7a6530;
+    --gold-glow: #c8a84b44;
+    --bg: #080705;
+    --bg2: #0f0d08;
+    --bg3: #161208;
+    --bg4: #1e1810;
+    --border: #2a2210;
+    --border2: #3a3018;
+    --red: #e05a5a;
+    --green: #5ae07a;
+    --purple: #b07ae0;
+    --text: #d4c08a;
+    --muted: #7a6a44;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bot: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Crimson Text', Georgia, serif; }
 
+  /* ── Intro ── */
+  #intro {
+    position: fixed; inset: 0; z-index: 9999;
+    background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  }
+  #intro .rune { font-size: 64px; animation: runeIn 1s ease forwards; opacity: 0; }
+  #intro .brand { font-family: 'Cinzel', serif; font-size: 36px; letter-spacing: 8px; color: var(--gold);
+    animation: fadeUp 1s 0.5s ease forwards; opacity: 0; }
+  #intro .sub { font-size: 13px; letter-spacing: 4px; color: var(--muted); text-transform: uppercase;
+    animation: fadeUp 1s 0.9s ease forwards; opacity: 0; }
+  #intro .line { width: 120px; height: 1px; background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    animation: fadeUp 1s 1.2s ease forwards; opacity: 0; }
+  @keyframes runeIn { from { opacity:0; transform: scale(0.5) rotate(-20deg); } to { opacity:1; transform: scale(1) rotate(0); } }
+  @keyframes fadeUp { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: translateY(0); } }
+  #intro.fade-out { animation: introOut 0.7s ease forwards; }
+  @keyframes introOut { to { opacity: 0; pointer-events: none; } }
+
+  /* ── Shell ── */
+  #app { height: 100%; display: flex; flex-direction: column; padding-top: var(--safe-top); }
+
+  /* ── Header ── */
+  #header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; border-bottom: 1px solid var(--border2);
+    background: linear-gradient(180deg, #0f0d08, #080705);
+    flex-shrink: 0;
+  }
+  #header .logo { font-family: 'Cinzel', serif; font-size: 18px; letter-spacing: 4px; color: var(--gold); }
+  #header .turn-badge {
+    font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+    background: var(--bg3); border: 1px solid var(--border2); border-radius: 20px;
+    padding: 4px 12px;
+  }
+  #header .turn-badge span { color: var(--green); font-weight: 600; }
+
+  /* ── Tab bar ── */
+  #tabbar {
+    display: flex; border-bottom: 1px solid var(--border);
+    background: var(--bg2); flex-shrink: 0;
+  }
+  .tab {
+    flex: 1; padding: 10px 4px; text-align: center;
+    font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+    cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;
+    font-family: 'Cinzel', serif;
+  }
+  .tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+  /* ── Views ── */
+  .view { display: none; flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+  .view.active { display: flex; flex-direction: column; }
+
+  /* ── Life view ── */
+  #view-life { padding: 16px; gap: 16px; }
+  .life-card {
+    background: linear-gradient(135deg, var(--bg3), var(--bg2));
+    border: 1px solid var(--border2); border-radius: 16px;
+    padding: 20px; text-align: center;
+  }
+  .life-name { font-family: 'Cinzel', serif; font-size: 12px; letter-spacing: 3px; color: var(--muted); margin-bottom: 8px; }
+  .life-num { font-family: 'Cinzel', serif; font-size: 72px; color: var(--gold); line-height: 1; }
+  .life-num.low { color: var(--red); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+  .life-btns { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+  .life-btn {
+    font-family: 'Cinzel', serif; font-size: 13px; padding: 8px 16px;
+    border-radius: 8px; cursor: pointer; border: 1px solid; transition: all 0.15s;
+    min-width: 52px;
+  }
+  .life-btn.minus { background: #1a0808; border-color: #5a1a1a; color: var(--red); }
+  .life-btn.plus { background: #081a0a; border-color: #1a5a1a; color: var(--green); }
+  .life-btn:active { transform: scale(0.93); }
+  .life-divider { display: flex; align-items: center; gap: 10px; }
+  .life-divider hr { flex: 1; border: none; border-top: 1px solid var(--border); }
+  .life-divider span { color: var(--border2); font-size: 18px; }
+  .turn-controls { display: flex; gap: 8px; margin-top: 4px; }
+  .btn-primary {
+    flex: 1; padding: 12px; font-family: 'Cinzel', serif; font-size: 11px; letter-spacing: 2px;
+    background: var(--bg4); border: 1px solid var(--gold-dim); color: var(--gold);
+    border-radius: 10px; cursor: pointer; transition: all 0.15s; text-transform: uppercase;
+  }
+  .btn-primary:active { background: var(--border2); transform: scale(0.97); }
+  .btn-danger { border-color: #5a1a1a; color: var(--red); background: #1a0808; }
+
+  /* ── Board view ── */
+  #view-board { padding: 10px; gap: 8px; }
+  .board-player {
+    background: var(--bg3); border: 1px solid var(--border2); border-radius: 12px;
+    padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .board-player.opponent { opacity: 0.85; }
+  .zone-label { font-family: 'Cinzel', serif; font-size: 9px; letter-spacing: 2px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; }
+  .zone-row { display: flex; gap: 6px; align-items: flex-start; }
+  .zone-stack {
+    display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0;
+  }
+  .deck-pile {
+    width: 56px; height: 78px; border-radius: 6px;
+    background: linear-gradient(135deg, #0d1a0d, #081208);
+    border: 2px solid #1a3a1a;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; position: relative; flex-shrink: 0;
+    box-shadow: 2px 2px 0 #0d1a0d, 3px 3px 0 #0a160a;
+    transition: transform 0.1s;
+  }
+  .deck-pile:active { transform: scale(0.95); }
+  .deck-pile .deck-count { font-family: 'Cinzel', serif; font-size: 18px; color: #2a5a2a; }
+  .deck-pile .deck-label { font-size: 8px; color: #1a3a1a; letter-spacing: 1px; }
+  .gy-pile {
+    width: 56px; height: 78px; border-radius: 6px;
+    background: #150a0a; border: 1px solid #3a1a1a;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden; flex-shrink: 0;
+  }
+  .gy-pile img { width: 100%; height: 100%; object-fit: cover; border-radius: 5px; opacity: 0.7; }
+  .gy-pile .gy-empty { font-size: 20px; color: #3a1a1a; }
+  .gy-count {
+    position: absolute; top: 3px; right: 3px;
+    background: #150a0a99; border: 1px solid #5a1a1a;
+    border-radius: 4px; font-size: 8px; color: #8a4a4a; padding: 1px 3px;
+  }
+  .battlefield {
+    flex: 1; min-height: 88px;
+    background: #0d1a0d22; border: 1px dashed #1a3a1a; border-radius: 8px;
+    padding: 6px; display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start;
+  }
+  .hand-zone {
+    min-height: 90px; background: #0d0a1a22; border: 1px dashed #1a1a3a;
+    border-radius: 8px; padding: 6px;
+    display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start;
+  }
+  .card-thumb {
+    position: relative; flex-shrink: 0; cursor: pointer;
+  }
+  .card-thumb img {
+    width: 54px; height: 76px; border-radius: 4px;
+    box-shadow: 0 2px 6px #0008; display: block;
+    transition: box-shadow 0.2s;
+  }
+  .card-thumb.tapped { transform: rotate(90deg); margin: 8px 12px; }
+  .card-thumb:active img { box-shadow: 0 0 10px var(--gold-glow); }
+  .card-menu {
+    position: fixed; z-index: 500;
+    background: var(--bg3); border: 1px solid var(--border2); border-radius: 10px;
+    padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 130px;
+    box-shadow: 0 8px 32px #000a;
+  }
+  .card-menu-btn {
+    font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 1px;
+    background: var(--bg4); border: 1px solid var(--border2); color: var(--text);
+    border-radius: 6px; padding: 7px 10px; cursor: pointer; text-align: left;
+  }
+  .card-menu-btn:active { background: var(--border2); }
+  .zone-sm-label { font-size: 8px; color: var(--muted); letter-spacing: 1px; font-family: 'Cinzel', serif; }
+  .stack-btn {
+    font-size: 9px; color: var(--muted); background: var(--bg4); border: 1px solid var(--border);
+    border-radius: 4px; padding: 2px 6px; cursor: pointer; letter-spacing: 1px; width: 100%;
+  }
+  .stack-btn:active { background: var(--border2); }
+
+  /* ── Deck Builder view ── */
+  #view-deck { padding: 12px; gap: 10px; }
+  .deck-search-row { display: flex; gap: 8px; }
+  .inp {
+    flex: 1; background: var(--bg3); border: 1px solid var(--border2); color: var(--text);
+    border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: 'Crimson Text', serif;
+    outline: none; -webkit-appearance: none;
+  }
+  .inp::placeholder { color: var(--muted); }
+  .inp:focus { border-color: var(--gold-dim); }
+  .btn-search {
+    background: var(--bg4); border: 1px solid var(--gold-dim); color: var(--gold);
+    border-radius: 8px; padding: 10px 16px; font-family: 'Cinzel', serif;
+    font-size: 11px; letter-spacing: 1px; cursor: pointer;
+  }
+  .btn-search:active { background: var(--border2); }
+  .deck-cols { display: flex; gap: 10px; flex: 1; overflow: hidden; min-height: 0; }
+  .results-grid { flex: 1; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; padding-bottom: 10px; }
+  .results-grid img { width: 68px; height: 95px; border-radius: 5px; cursor: pointer; box-shadow: 0 2px 8px #0007; flex-shrink: 0; }
+  .results-grid img:active { box-shadow: 0 0 10px var(--gold-glow); transform: scale(0.97); }
+  .deck-list-col { width: 180px; overflow-y: auto; border-left: 1px solid var(--border); padding-left: 10px; }
+  .deck-list-col .zone-label { margin-bottom: 6px; }
+  .deck-item {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--bg4); border-radius: 6px; padding: 5px 8px;
+    font-size: 12px; color: var(--text); margin-bottom: 3px;
+  }
+  .deck-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  .deck-remove { background: none; border: none; color: var(--red); font-size: 16px; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
+  .deck-footer { display: flex; gap: 8px; flex-shrink: 0; }
+  .deck-player-tabs { display: flex; gap: 6px; flex-shrink: 0; }
+  .deck-player-tab {
+    flex: 1; padding: 8px; text-align: center; font-family: 'Cinzel', serif;
+    font-size: 10px; letter-spacing: 1px; border-radius: 8px; cursor: pointer;
+    background: var(--bg3); border: 1px solid var(--border2); color: var(--muted);
+    transition: all 0.2s;
+  }
+  .deck-player-tab.active { background: var(--bg4); border-color: var(--gold-dim); color: var(--gold); }
+
+  /* ── Rules view ── */
+  #view-rules { padding: 12px; gap: 10px; }
+  .rules-msgs { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-bottom: 4px; }
+  .rules-msg {
+    max-width: 88%; border-radius: 10px; padding: 10px 13px;
+    font-size: 14px; line-height: 1.55; color: var(--text);
+  }
+  .rules-msg.ai { align-self: flex-start; background: var(--bg3); border: 1px solid var(--border2); }
+  .rules-msg.user { align-self: flex-end; background: var(--bg4); border: 1px solid var(--border2); color: var(--gold); }
+  .rules-msg.thinking { font-style: italic; color: var(--muted); }
+  .rules-input-row { display: flex; gap: 8px; flex-shrink: 0; padding-bottom: var(--safe-bot); }
+  .btn-ask {
+    background: var(--bg4); border: 1px solid var(--gold-dim); color: var(--gold);
+    border-radius: 8px; padding: 10px 14px; font-family: 'Cinzel', serif;
+    font-size: 11px; cursor: pointer;
+  }
+
+  /* ── Token creator ── */
+  .token-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .token-preset {
+    background: var(--bg4); border: 1px solid var(--border2); color: var(--text);
+    border-radius: 8px; padding: 8px 12px; cursor: pointer; font-size: 12px;
+    transition: all 0.15s;
+  }
+  .token-preset:active { border-color: var(--gold-dim); color: var(--gold); }
+  .token-on-field {
+    width: 54px; height: 54px; border-radius: 6px;
+    background: var(--bg4); border: 1px solid var(--border2);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--text); cursor: pointer; text-align: center; padding: 2px;
+    flex-shrink: 0;
+  }
+  .token-on-field .token-pt { font-family: 'Cinzel', serif; font-size: 13px; color: var(--gold); }
+
+  /* ── Overlay ── */
+  .overlay {
+    position: fixed; inset: 0; background: #000c; z-index: 200;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .overlay-box {
+    background: var(--bg2); border: 1px solid var(--border2); border-radius: 16px 16px 0 0;
+    padding: 20px; width: 100%; max-width: 480px; max-height: 80vh; overflow-y: auto;
+    padding-bottom: calc(20px + var(--safe-bot));
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp { from { transform: translateY(40px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+  .overlay-title { font-family: 'Cinzel', serif; font-size: 16px; color: var(--gold); margin-bottom: 14px; }
+  .overlay-close { float: right; background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; }
+
+  /* ── Card preview ── */
+  #card-preview {
+    position: fixed; inset: 0; z-index: 600; background: #000c;
+    display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+  }
+  #card-preview.show { display: flex; }
+  #card-preview img { max-width: 280px; border-radius: 12px; box-shadow: 0 16px 48px #000; }
+  #card-preview-close {
+    background: var(--bg3); border: 1px solid var(--border2); color: var(--muted);
+    border-radius: 8px; padding: 8px 24px; cursor: pointer; font-family: 'Cinzel', serif;
+    font-size: 11px; letter-spacing: 2px;
+  }
+
+  /* ── New game confirm ── */
+  .confirm-btns { display: flex; gap: 8px; margin-top: 14px; }
+  .s-section { margin-bottom: 14px; }
+  .s-label { font-family: 'Cinzel', serif; font-size: 10px; letter-spacing: 2px; color: var(--muted); margin-bottom: 6px; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- Intro -->
+<div id="intro">
+  <div class="rune">🜲</div>
+  <div class="brand">HEYNS HQ</div>
+  <div class="line"></div>
+  <div class="sub">The MTG Companion</div>
+</div>
+
+<!-- App shell -->
+<div id="app">
+  <div id="header">
+    <div class="logo">✦ HEYNS HQ</div>
+    <div class="turn-badge">TURN: <span id="turn-name">Player 1</span></div>
+  </div>
+  <div id="tabbar">
+    <div class="tab active" data-view="life">♥ Life</div>
+    <div class="tab" data-view="board">⊕ Board</div>
+    <div class="tab" data-view="deck">✎ Decks</div>
+    <div class="tab" data-view="rules">⚖ Rules</div>
+  </div>
+
+  <!-- Life view -->
+  <div class="view active" id="view-life">
+    <div class="life-card" id="lc-p2">
+      <div class="life-name" id="name-p2-lc">PLAYER 2</div>
+      <div class="life-num" id="life-p2">20</div>
+      <div class="life-btns">
+        <button class="life-btn minus" onclick="changeLife(1,-10)">−10</button>
+        <button class="life-btn minus" onclick="changeLife(1,-5)">−5</button>
+        <button class="life-btn minus" onclick="changeLife(1,-1)">−1</button>
+        <button class="life-btn plus"  onclick="changeLife(1,+1)">+1</button>
+        <button class="life-btn plus"  onclick="changeLife(1,+5)">+5</button>
+      </div>
+    </div>
+
+    <div class="life-divider"><hr><span>⊕</span><hr></div>
+
+    <div class="life-card" id="lc-p1">
+      <div class="life-name" id="name-p1-lc">PLAYER 1</div>
+      <div class="life-num" id="life-p1">20</div>
+      <div class="life-btns">
+        <button class="life-btn minus" onclick="changeLife(0,-10)">−10</button>
+        <button class="life-btn minus" onclick="changeLife(0,-5)">−5</button>
+        <button class="life-btn minus" onclick="changeLife(0,-1)">−1</button>
+        <button class="life-btn plus"  onclick="changeLife(0,+1)">+1</button>
+        <button class="life-btn plus"  onclick="changeLife(0,+5)">+5</button>
+      </div>
+    </div>
+
+    <div class="turn-controls">
+      <button class="btn-primary" onclick="endTurn()">⇒ End Turn</button>
+      <button class="btn-primary btn-danger" onclick="showNewGame()">↺ New Game</button>
+    </div>
+
+    <div style="padding: 4px 0;">
+      <div class="s-label" style="margin-bottom:8px;">Player Names</div>
+      <div style="display:flex;gap:8px;">
+        <input class="inp" id="inp-name-p1" placeholder="Player 1 name" value="Player 1" oninput="updateNames()">
+        <input class="inp" id="inp-name-p2" placeholder="Player 2 name" value="Player 2" oninput="updateNames()">
+      </div>
+    </div>
+  </div>
+
+  <!-- Board view -->
+  <div class="view" id="view-board">
+    <!-- Player 2 (top/opponent) -->
+    <div class="board-player opponent">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px;" id="name-p2-board">PLAYER 2</span>
+        <span style="font-family:'Cinzel',serif;font-size:11px;color:var(--gold);" id="life-badge-p2">♥ 20</span>
+      </div>
+      <div class="zone-label">Hand</div>
+      <div class="hand-zone" id="hand-p2"></div>
+      <div class="zone-row">
+        <div class="zone-stack">
+          <div class="zone-sm-label">Library</div>
+          <div class="deck-pile" id="deck-p2" onclick="drawCard(1)">
+            <div class="deck-count" id="deck-count-p2">0</div>
+            <div class="deck-label">TAP</div>
+          </div>
+          <button class="stack-btn" onclick="shuffleDeck(1)">SHUFFLE</button>
+        </div>
+        <div class="zone-stack">
+          <div class="zone-sm-label">Graveyard</div>
+          <div class="gy-pile" id="gy-p2" onclick="viewGraveyard(1)">
+            <div class="gy-empty">☠</div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div class="zone-label" style="margin:0;">Battlefield</div>
+            <button class="stack-btn" style="width:auto;padding:2px 8px;" onclick="untapAll(1)">Untap All</button>
+          </div>
+          <div class="battlefield" id="bf-p2"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Divider -->
+    <div style="border-top:1px solid var(--border);text-align:center;position:relative;flex-shrink:0;">
+      <span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--bg);color:var(--border2);font-size:14px;padding:0 10px;">⊕</span>
+    </div>
+
+    <!-- Player 1 (bottom/you) -->
+    <div class="board-player">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px;" id="name-p1-board">PLAYER 1</span>
+        <span style="font-family:'Cinzel',serif;font-size:11px;color:var(--gold);" id="life-badge-p1">♥ 20</span>
+      </div>
+      <div class="zone-row">
+        <div class="zone-stack">
+          <div class="zone-sm-label">Library</div>
+          <div class="deck-pile" id="deck-p1" onclick="drawCard(0)">
+            <div class="deck-count" id="deck-count-p1">0</div>
+            <div class="deck-label">TAP</div>
+          </div>
+          <button class="stack-btn" onclick="shuffleDeck(0)">SHUFFLE</button>
+        </div>
+        <div class="zone-stack">
+          <div class="zone-sm-label">Graveyard</div>
+          <div class="gy-pile" id="gy-p1" onclick="viewGraveyard(0)">
+            <div class="gy-empty">☠</div>
+          </div>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div class="zone-label" style="margin:0;">Battlefield</div>
+            <button class="stack-btn" style="width:auto;padding:2px 8px;" onclick="untapAll(0)">Untap All</button>
+          </div>
+          <div class="battlefield" id="bf-p1"></div>
+        </div>
+      </div>
+      <div class="zone-label">Hand</div>
+      <div class="hand-zone" id="hand-p1"></div>
+    </div>
+
+    <!-- Token section -->
+    <div style="padding:8px;flex-shrink:0;">
+      <div class="zone-label">Add Token</div>
+      <div class="token-row">
+        <button class="token-preset" onclick="addToken(0,'1/1 Creature','1/1')">1/1 Creature</button>
+        <button class="token-preset" onclick="addToken(0,'2/2 Zombie','2/2')">2/2 Zombie</button>
+        <button class="token-preset" onclick="addToken(0,'3/3 Beast','3/3')">3/3 Beast</button>
+        <button class="token-preset" onclick="addToken(1,'1/1 Creature','1/1')">↑ 1/1</button>
+        <button class="token-preset" onclick="addToken(1,'2/2 Zombie','2/2')">↑ 2/2</button>
+        <button class="token-preset" onclick="showCustomToken()">✎ Custom</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deck builder view -->
+  <div class="view" id="view-deck">
+    <div class="deck-player-tabs">
+      <div class="deck-player-tab active" id="dtab-0" onclick="setDeckPlayer(0)">Player 1 Deck</div>
+      <div class="deck-player-tab" id="dtab-1" onclick="setDeckPlayer(1)">Player 2 Deck</div>
+    </div>
+    <div class="deck-search-row">
+      <input class="inp" id="deck-search-inp" placeholder="Search cards e.g. Lightning Bolt…" onkeydown="if(event.key==='Enter')searchCards()">
+      <button class="btn-search" onclick="searchCards()">Search</button>
+    </div>
+    <div class="deck-cols">
+      <div>
+        <div class="zone-label">Results</div>
+        <div class="results-grid" id="search-results"></div>
+      </div>
+      <div class="deck-list-col">
+        <div class="zone-label">My Deck (<span id="deck-count-badge">0</span>)</div>
+        <div id="deck-list"></div>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+          <button class="btn-primary" onclick="saveDeck()">✓ Save & Load</button>
+          <button class="btn-primary btn-danger" onclick="clearDeck()">✕ Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rules view -->
+  <div class="view" id="view-rules">
+    <div class="rules-msgs" id="rules-msgs">
+      <div class="rules-msg ai">Ask me anything about MTG rules! Try: <em>"Does deathtouch work with trample?"</em> or <em>"Can I cast instant during opponent's turn?"</em></div>
+    </div>
+    <div class="rules-input-row">
+      <input class="inp" id="rules-inp" placeholder="Ask a rules question…" onkeydown="if(event.key==='Enter')askRules()">
+      <button class="btn-ask" onclick="askRules()">Ask</button>
+    </div>
+  </div>
+</div>
+
+<!-- Card preview -->
+<div id="card-preview">
+  <img id="card-preview-img" src="" alt="">
+  <button id="card-preview-close" onclick="closePreview()">CLOSE</button>
+</div>
+
+<!-- Overlays -->
+<div class="overlay" id="overlay-newgame" style="display:none;">
+  <div class="overlay-box">
+    <button class="overlay-close" onclick="closeOverlay('overlay-newgame')">✕</button>
+    <div class="overlay-title">New Game</div>
+    <p style="font-size:14px;color:var(--muted);margin-bottom:4px;">Reset life totals to 20 and shuffle decks back. Decks will be preserved.</p>
+    <div class="confirm-btns">
+      <button class="btn-primary" onclick="newGame()">✓ New Game</button>
+      <button class="btn-primary btn-danger" onclick="closeOverlay('overlay-newgame')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-gy" style="display:none;">
+  <div class="overlay-box">
+    <button class="overlay-close" onclick="closeOverlay('overlay-gy')">✕</button>
+    <div class="overlay-title" id="gy-overlay-title">Graveyard</div>
+    <div id="gy-overlay-cards" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-custom-token" style="display:none;">
+  <div class="overlay-box">
+    <button class="overlay-close" onclick="closeOverlay('overlay-custom-token')">✕</button>
+    <div class="overlay-title">Custom Token</div>
+    <div class="s-section">
+      <div class="s-label">Name</div>
+      <input class="inp" id="tok-name" placeholder="e.g. Saproling" style="width:100%">
+    </div>
+    <div class="s-section">
+      <div class="s-label">Power/Toughness</div>
+      <input class="inp" id="tok-pt" placeholder="e.g. 1/1" style="width:100%">
+    </div>
+    <div class="s-label">For Player</div>
+    <div style="display:flex;gap:8px;margin-top:6px;margin-bottom:14px;">
+      <button class="btn-primary" id="tok-p1-btn" onclick="confirmCustomToken(0)">Player 1</button>
+      <button class="btn-primary" id="tok-p2-btn" onclick="confirmCustomToken(1)">Player 2</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-card-menu" style="display:none;">
+  <div class="overlay-box">
+    <button class="overlay-close" onclick="closeOverlay('overlay-card-menu')">✕</button>
+    <div class="overlay-title" id="cm-card-name">Card Actions</div>
+    <div style="display:flex;flex-direction:column;gap:8px;" id="cm-buttons"></div>
+  </div>
+</div>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+const state = {
+  life: [20, 20],
+  turn: 0,
+  names: ['Player 1', 'Player 2'],
+  library: [[], []],
+  hand: [[], []],
+  battlefield: [[], []],
+  graveyard: [[], []],
+  savedDeck: [[], []],
+  deckBuilding: [[], []],
+  activeDeckPlayer: 0,
+};
+
+let menuContext = null; // { pi, zone, instanceId }
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+const uid = () => Math.random().toString(36).slice(2);
+const imgUrl = (card) => card.image_uris?.normal || card.card_faces?.[0]?.image_uris?.normal || '';
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function save() {
+  localStorage.setItem('sf_state', JSON.stringify({
+    life: state.life, names: state.names,
+    savedDeck: state.savedDeck, deckBuilding: state.deckBuilding,
+  }));
+}
+
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem('sf_state') || '{}');
+    if (d.life) state.life = d.life;
+    if (d.names) state.names = d.names;
+    if (d.savedDeck) state.savedDeck = d.savedDeck;
+    if (d.deckBuilding) state.deckBuilding = d.deckBuilding;
+  } catch(e) {}
+}
+
+// ── Life ─────────────────────────────────────────────────────────────────────
+function changeLife(pi, delta) {
+  state.life[pi] = Math.max(0, state.life[pi] + delta);
+  renderLife();
+  save();
+}
+
+function renderLife() {
+  for (let pi = 0; pi < 2; pi++) {
+    const el = document.getElementById(`life-p${pi === 0 ? 1 : 2}`);
+    el.textContent = state.life[pi];
+    el.classList.toggle('low', state.life[pi] <= 5);
+    document.getElementById(`life-badge-p${pi === 0 ? 1 : 2}`).textContent = `♥ ${state.life[pi]}`;
+  }
+}
+
+function updateNames() {
+  state.names[0] = document.getElementById('inp-name-p1').value || 'Player 1';
+  state.names[1] = document.getElementById('inp-name-p2').value || 'Player 2';
+  document.getElementById('name-p1-lc').textContent = state.names[0].toUpperCase();
+  document.getElementById('name-p2-lc').textContent = state.names[1].toUpperCase();
+  document.getElementById('name-p1-board').textContent = state.names[0].toUpperCase();
+  document.getElementById('name-p2-board').textContent = state.names[1].toUpperCase();
+  document.getElementById('turn-name').textContent = state.names[state.turn];
+  document.getElementById('dtab-0').textContent = state.names[0] + ' Deck';
+  document.getElementById('dtab-1').textContent = state.names[1] + ' Deck';
+  save();
+}
+
+// ── Turn ─────────────────────────────────────────────────────────────────────
+function endTurn() {
+  state.turn = (state.turn + 1) % 2;
+  document.getElementById('turn-name').textContent = state.names[state.turn];
+  // Flash
+  const badge = document.getElementById('turn-name');
+  badge.style.color = 'var(--gold)';
+  setTimeout(() => badge.style.color = 'var(--green)', 600);
+}
+
+// ── New Game ─────────────────────────────────────────────────────────────────
+function showNewGame() { document.getElementById('overlay-newgame').style.display = 'flex'; }
+
+function newGame() {
+  state.life = [20, 20];
+  state.turn = 0;
+  for (let pi = 0; pi < 2; pi++) {
+    state.library[pi] = shuffle((state.savedDeck[pi] || []).map(c => ({ ...c, instanceId: uid() })));
+    state.hand[pi] = [];
+    state.battlefield[pi] = [];
+    state.graveyard[pi] = [];
+  }
+  closeOverlay('overlay-newgame');
+  renderAll();
+}
+
+// ── Board rendering ───────────────────────────────────────────────────────────
+function renderAll() {
+  renderLife();
+  for (let pi = 0; pi < 2; pi++) renderBoard(pi);
+}
+
+function renderBoard(pi) {
+  const suffix = pi === 0 ? 'p1' : 'p2';
+  document.getElementById(`deck-count-${suffix}`).textContent = state.library[pi].length;
+
+  // Graveyard top card
+  const gyEl = document.getElementById(`gy-${suffix}`);
+  const gy = state.graveyard[pi];
+  if (gy.length > 0) {
+    gyEl.innerHTML = `<img src="${imgUrl(gy[gy.length-1])}" alt="gy"><div class="gy-count">${gy.length}</div>`;
+  } else {
+    gyEl.innerHTML = `<div class="gy-empty">☠</div>`;
+  }
+
+  // Hand
+  const handEl = document.getElementById(`hand-${suffix}`);
+  handEl.innerHTML = '';
+  state.hand[pi].forEach(card => {
+    const d = document.createElement('div');
+    d.className = 'card-thumb';
+    d.innerHTML = `<img src="${imgUrl(card)}" alt="${card.name}" loading="lazy">`;
+    d.onclick = (e) => { e.stopPropagation(); showCardMenu(pi, 'hand', card.instanceId); };
+    d.oncontextmenu = (e) => { e.preventDefault(); previewCard(imgUrl(card)); };
+    handEl.appendChild(d);
+  });
+
+  // Battlefield
+  const bfEl = document.getElementById(`bf-${suffix}`);
+  bfEl.innerHTML = '';
+  state.battlefield[pi].forEach(card => {
+    if (card.isToken) {
+      const d = document.createElement('div');
+      d.className = 'token-on-field';
+      d.innerHTML = `<div class="token-pt">${card.pt}</div><div style="font-size:9px;margin-top:2px;color:var(--muted)">${card.tokenName}</div>`;
+      d.onclick = () => showTokenMenu(pi, card.instanceId);
+      bfEl.appendChild(d);
+    } else {
+      const d = document.createElement('div');
+      d.className = 'card-thumb' + (card.tapped ? ' tapped' : '');
+      d.innerHTML = `<img src="${imgUrl(card)}" alt="${card.name}" loading="lazy">`;
+      d.onclick = (e) => { e.stopPropagation(); showCardMenu(pi, 'battlefield', card.instanceId); };
+      d.oncontextmenu = (e) => { e.preventDefault(); previewCard(imgUrl(card)); };
+      bfEl.appendChild(d);
+    }
+  });
+}
+
+// ── Card actions ─────────────────────────────────────────────────────────────
+function showCardMenu(pi, zone, instanceId) {
+  menuContext = { pi, zone, instanceId };
+  const card = findCard(pi, zone, instanceId);
+  if (!card) return;
+  document.getElementById('cm-card-name').textContent = card.name || card.tokenName || 'Token';
+  const btns = document.getElementById('cm-buttons');
+  btns.innerHTML = '';
+
+  const actions = [];
+  if (zone === 'hand') {
+    actions.push({ label: '⊕ Play to Battlefield', fn: () => moveCard(pi, 'hand', 'battlefield', instanceId) });
+    actions.push({ label: '☠ Discard to Graveyard', fn: () => moveCard(pi, 'hand', 'graveyard', instanceId) });
+  }
+  if (zone === 'battlefield') {
+    actions.push({ label: card.tapped ? '↺ Untap' : '↷ Tap', fn: () => tapCard(pi, instanceId) });
+    actions.push({ label: '☠ To Graveyard', fn: () => moveCard(pi, 'battlefield', 'graveyard', instanceId) });
+    actions.push({ label: '✋ Return to Hand', fn: () => moveCard(pi, 'battlefield', 'hand', instanceId) });
+    actions.push({ label: '📚 Return to Library (bottom)', fn: () => moveCard(pi, 'battlefield', 'library', instanceId) });
+  }
+  actions.push({ label: '🔍 Preview Card', fn: () => { closeOverlay('overlay-card-menu'); previewCard(imgUrl(card)); } });
+
+  actions.forEach(a => {
+    const b = document.createElement('button');
+    b.className = 'btn-primary';
+    b.textContent = a.label;
+    b.onclick = () => { closeOverlay('overlay-card-menu'); a.fn(); };
+    btns.appendChild(b);
+  });
+
+  document.getElementById('overlay-card-menu').style.display = 'flex';
+}
+
+function showTokenMenu(pi, instanceId) {
+  menuContext = { pi, zone: 'battlefield', instanceId };
+  document.getElementById('cm-card-name').textContent = 'Token';
+  const btns = document.getElementById('cm-buttons');
+  btns.innerHTML = '';
+  const b = document.createElement('button');
+  b.className = 'btn-primary btn-danger';
+  b.textContent = '✕ Remove Token';
+  b.onclick = () => { closeOverlay('overlay-card-menu'); removeToken(pi, instanceId); };
+  btns.appendChild(b);
+  document.getElementById('overlay-card-menu').style.display = 'flex';
+}
+
+function findCard(pi, zone, instanceId) {
+  if (zone === 'hand') return state.hand[pi].find(c => c.instanceId === instanceId);
+  if (zone === 'battlefield') return state.battlefield[pi].find(c => c.instanceId === instanceId);
+  if (zone === 'graveyard') return state.graveyard[pi].find(c => c.instanceId === instanceId);
+}
+
+function moveCard(pi, from, to, instanceId) {
+  const card = findCard(pi, from, instanceId);
+  if (!card) return;
+  state[from === 'library' ? 'library' : from][pi] = state[from === 'library' ? 'library' : from][pi].filter(c => c.instanceId !== instanceId);
+  if (to === 'library') {
+    state.library[pi].push({ ...card, tapped: false, instanceId: uid() });
+  } else {
+    state[to][pi].push({ ...card, tapped: false, instanceId: uid() });
+  }
+  renderBoard(pi);
+}
+
+function tapCard(pi, instanceId) {
+  state.battlefield[pi] = state.battlefield[pi].map(c =>
+    c.instanceId === instanceId ? { ...c, tapped: !c.tapped } : c
+  );
+  renderBoard(pi);
+}
+
+function drawCard(pi) {
+  if (state.library[pi].length === 0) return;
+  const [top, ...rest] = state.library[pi];
+  state.library[pi] = rest;
+  state.hand[pi] = [...state.hand[pi], { ...top, instanceId: uid() }];
+  renderBoard(pi);
+}
+
+function shuffleDeck(pi) {
+  state.library[pi] = shuffle(state.library[pi]);
+  renderBoard(pi);
+}
+
+function untapAll(pi) {
+  state.battlefield[pi] = state.battlefield[pi].map(c => ({ ...c, tapped: false }));
+  renderBoard(pi);
+}
+
+// ── Graveyard viewer ──────────────────────────────────────────────────────────
+function viewGraveyard(pi) {
+  const gy = state.graveyard[pi];
+  document.getElementById('gy-overlay-title').textContent = `${state.names[pi]} — Graveyard (${gy.length})`;
+  const el = document.getElementById('gy-overlay-cards');
+  el.innerHTML = '';
+  if (gy.length === 0) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:13px;">Empty graveyard</p>';
+  } else {
+    gy.slice().reverse().forEach(card => {
+      const img = document.createElement('img');
+      img.src = imgUrl(card);
+      img.alt = card.name;
+      img.style.cssText = 'width:80px;height:112px;border-radius:6px;cursor:pointer;box-shadow:0 2px 8px #0007;';
+      img.onclick = () => { closeOverlay('overlay-gy'); previewCard(imgUrl(card)); };
+      el.appendChild(img);
+    });
+  }
+  document.getElementById('overlay-gy').style.display = 'flex';
+}
+
+// ── Tokens ───────────────────────────────────────────────────────────────────
+function addToken(pi, name, pt) {
+  state.battlefield[pi].push({ isToken: true, tokenName: name, pt, instanceId: uid() });
+  renderBoard(pi);
+}
+
+function removeToken(pi, instanceId) {
+  state.battlefield[pi] = state.battlefield[pi].filter(c => c.instanceId !== instanceId);
+  renderBoard(pi);
+}
+
+function showCustomToken() { document.getElementById('overlay-custom-token').style.display = 'flex'; }
+
+function confirmCustomToken(pi) {
+  const name = document.getElementById('tok-name').value || 'Token';
+  const pt = document.getElementById('tok-pt').value || '1/1';
+  addToken(pi, name, pt);
+  closeOverlay('overlay-custom-token');
+  document.getElementById('tok-name').value = '';
+  document.getElementById('tok-pt').value = '';
+}
+
+// ── Card preview ──────────────────────────────────────────────────────────────
+function previewCard(url) {
+  document.getElementById('card-preview-img').src = url;
+  document.getElementById('card-preview').classList.add('show');
+}
+function closePreview() {
+  document.getElementById('card-preview').classList.remove('show');
+}
+
+// ── Deck Builder ──────────────────────────────────────────────────────────────
+function setDeckPlayer(pi) {
+  state.activeDeckPlayer = pi;
+  document.getElementById('dtab-0').classList.toggle('active', pi === 0);
+  document.getElementById('dtab-1').classList.toggle('active', pi === 1);
+  renderDeckList();
+}
+
+async function searchCards() {
+  const q = document.getElementById('deck-search-inp').value.trim();
+  if (!q) return;
+  const el = document.getElementById('search-results');
+  el.innerHTML = '<span style="color:var(--muted);font-size:12px;">Searching…</span>';
+  try {
+    const r = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(q)}&unique=cards`);
+    const d = await r.json();
+    el.innerHTML = '';
+    (d.data || []).slice(0, 16).forEach(card => {
+      const url = imgUrl(card);
+      if (!url) return;
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = card.name;
+      img.loading = 'lazy';
+      img.onclick = () => addCardToDeck(card);
+      img.oncontextmenu = (e) => { e.preventDefault(); previewCard(url); };
+      el.appendChild(img);
+    });
+    if ((d.data || []).length === 0) el.innerHTML = '<span style="color:var(--muted);font-size:12px;">No results</span>';
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--red);font-size:12px;">Search failed</span>';
+  }
+}
+
+function addCardToDeck(card) {
+  const pi = state.activeDeckPlayer;
+  state.deckBuilding[pi] = [...(state.deckBuilding[pi] || []), { ...card, instanceId: uid() }];
+  renderDeckList();
+}
+
+function renderDeckList() {
+  const pi = state.activeDeckPlayer;
+  const deck = state.deckBuilding[pi] || [];
+  const el = document.getElementById('deck-list');
+  document.getElementById('deck-count-badge').textContent = deck.length;
+  // Group by name
+  const groups = {};
+  deck.forEach(c => {
+    if (!groups[c.name]) groups[c.name] = { card: c, count: 0, ids: [] };
+    groups[c.name].count++;
+    groups[c.name].ids.push(c.instanceId);
+  });
+  el.innerHTML = '';
+  Object.values(groups).forEach(g => {
+    const d = document.createElement('div');
+    d.className = 'deck-item';
+    d.innerHTML = `<span>${g.count}× ${g.card.name}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'deck-remove';
+    btn.textContent = '−';
+    btn.onclick = () => {
+      // Remove last one
+      const lastId = g.ids[g.ids.length - 1];
+      state.deckBuilding[pi] = state.deckBuilding[pi].filter(c => c.instanceId !== lastId);
+      renderDeckList();
+    };
+    d.appendChild(btn);
+    el.appendChild(d);
+  });
+}
+
+function saveDeck() {
+  const pi = state.activeDeckPlayer;
+  state.savedDeck[pi] = [...(state.deckBuilding[pi] || [])];
+  state.library[pi] = shuffle(state.savedDeck[pi].map(c => ({ ...c, instanceId: uid() })));
+  state.hand[pi] = [];
+  state.battlefield[pi] = [];
+  state.graveyard[pi] = [];
+  save();
+  renderBoard(pi);
+  alert(`${state.names[pi]}'s deck saved — ${state.savedDeck[pi].length} cards loaded.`);
+}
+
+function clearDeck() {
+  const pi = state.activeDeckPlayer;
+  if (!confirm('Clear this deck?')) return;
+  state.deckBuilding[pi] = [];
+  renderDeckList();
+}
+
+// ── Rules Assistant ───────────────────────────────────────────────────────────
+const rulesHistory = [];
+
+async function askRules() {
+  const inp = document.getElementById('rules-inp');
+  const q = inp.value.trim();
+  if (!q) return;
+  inp.value = '';
+
+  const msgs = document.getElementById('rules-msgs');
+  const userMsg = document.createElement('div');
+  userMsg.className = 'rules-msg user';
+  userMsg.textContent = q;
+  msgs.appendChild(userMsg);
+
+  const thinking = document.createElement('div');
+  thinking.className = 'rules-msg thinking';
+  thinking.textContent = 'Consulting the rules…';
+  msgs.appendChild(thinking);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  rulesHistory.push({ role: 'user', content: q });
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: 'You are an expert Magic: The Gathering rules judge. Answer clearly and concisely in plain English. Keep answers to 2-4 sentences unless complexity demands more. Cite rule numbers only when highly relevant.',
+        messages: rulesHistory,
+      }),
+    });
+    const data = await res.json();
+    const answer = data.content?.[0]?.text || 'Could not get an answer.';
+    rulesHistory.push({ role: 'assistant', content: answer });
+    thinking.className = 'rules-msg ai';
+    thinking.textContent = answer;
+  } catch(e) {
+    thinking.className = 'rules-msg ai';
+    thinking.textContent = 'Connection error. Check your internet.';
+  }
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// ── Overlays ──────────────────────────────────────────────────────────────────
+function closeOverlay(id) { document.getElementById(id).style.display = 'none'; }
+
+document.querySelectorAll('.overlay').forEach(el => {
+  el.addEventListener('click', (e) => { if (e.target === el) el.style.display = 'none'; });
+});
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('view-' + tab.dataset.view).classList.add('active');
+  });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+load();
+
+// Restore name inputs
+document.getElementById('inp-name-p1').value = state.names[0];
+document.getElementById('inp-name-p2').value = state.names[1];
+updateNames();
+
+// Restore deckBuilding from savedDeck if empty
+for (let pi = 0; pi < 2; pi++) {
+  if ((!state.deckBuilding[pi] || state.deckBuilding[pi].length === 0) && state.savedDeck[pi]?.length > 0) {
+    state.deckBuilding[pi] = [...state.savedDeck[pi]];
+  }
+}
+renderDeckList();
+renderAll();
+
+// Intro
+setTimeout(() => {
+  const intro = document.getElementById('intro');
+  intro.classList.add('fade-out');
+  setTimeout(() => intro.remove(), 700);
+}, 2500);
+</script>
+</body>
+</html>
