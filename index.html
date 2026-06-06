@@ -219,7 +219,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v4.9</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v5.2</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="editUsername()">✎ Name</button>
@@ -1091,76 +1091,111 @@ window.buildAIDeck = async () => {
   const format = document.getElementById('ai-deck-format').value;
   if (!prompt) return toast('Describe your deck first!', true);
   const el = document.getElementById('ai-deck-result');
-  el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">Building your deck from Scryfall...</div>';
   document.getElementById('ai-build-btn').disabled = true;
-  const cardCount = format==='commander' ? 100 : 60;
-  const landCount = Math.floor(cardCount * 0.4);
+  const cardCount = format === 'commander' ? 100 : 60;
+
+  el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">🤖 Asking AI to build your deck...</div>';
+
   try {
-    const p = prompt.toLowerCase();
-    let colourQuery = '';
-    if(p.includes('red')&&p.includes('black'))colourQuery='color=BR';
-    else if(p.includes('red')&&p.includes('green'))colourQuery='color=RG';
-    else if(p.includes('white')&&p.includes('blue'))colourQuery='color=WU';
-    else if(p.includes('blue')&&p.includes('black'))colourQuery='color=UB';
-    else if(p.includes('green')&&p.includes('white'))colourQuery='color=GW';
-    else if(p.includes('red'))colourQuery='color=R';
-    else if(p.includes('blue'))colourQuery='color=U';
-    else if(p.includes('black'))colourQuery='color=B';
-    else if(p.includes('green'))colourQuery='color=G';
-    else if(p.includes('white'))colourQuery='color=W';
-    else colourQuery='color=R';
+    // Step 1: Ask Claude to generate a card list
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: `Build a Magic: The Gathering ${format} deck (${cardCount} cards) based on this request: "${prompt}".
+Return ONLY a card list in this exact format, nothing else:
+4x Card Name
+4x Another Card
+2x Third Card
+...
 
-    let typeQuery='type:creature';
-    if(p.includes('zombie'))typeQuery='type:zombie';
-    else if(p.includes('goblin'))typeQuery='type:goblin';
-    else if(p.includes('dragon'))typeQuery='type:dragon';
-    else if(p.includes('elf')||p.includes('elves'))typeQuery='type:elf';
-    else if(p.includes('vampire'))typeQuery='type:vampire';
-    else if(p.includes('knight'))typeQuery='type:knight';
-    else if(p.includes('control'))typeQuery='keyword:counter';
-    else if(p.includes('burn'))typeQuery='o:damage';
+Rules:
+- Include ${Math.floor(cardCount * 0.38)} basic lands appropriate for the deck's colours
+- Make sure ANY specific cards mentioned in the request are included
+- Total must equal exactly ${cardCount} cards
+- Use real MTG card names only
+- No explanations, no headers, just the list`
+        }]
+      })
+    });
+    const aiData = await aiRes.json();
+    const cardListText = aiData.content?.[0]?.text || '';
+    if (!cardListText) throw new Error('AI returned no card list');
 
-    const landMap={R:'Mountain',U:'Island',B:'Swamp',G:'Forest',W:'Plains',BR:'Swamp',RG:'Mountain',WU:'Plains',UB:'Island',GW:'Forest'};
-    const lc = colourQuery.replace('color=','');
-    const landName = landMap[lc] || 'Mountain';
-
-    const sr = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(colourQuery+' '+typeQuery+' cmc<=5')}&order=edhrec&unique=cards`);
-    const sd = await sr.json();
-    const spellPool = (sd.data||[]).filter(c=>imgUrl(c)&&!c.type_line?.toLowerCase().includes('land')).slice(0,60);
-
-    const lr = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(landName)}`);
-    const land = lr.ok ? await lr.json() : null;
-
-    const cards = [];
-    if (land) { for(let i=0;i<landCount;i++) cards.push({...land,instanceId:uid()}); }
-    const used={};
-    for(const card of spellPool) {
-      if(cards.length>=cardCount)break;
-      if(!used[card.name])used[card.name]=0;
-      while(used[card.name]<4&&cards.length<cardCount){cards.push({...card,instanceId:uid()});used[card.name]++;}
+    // Step 2: Parse the list
+    const lines = cardListText.split('\n').map(l => l.trim()).filter(Boolean);
+    const parsed = [];
+    for (const line of lines) {
+      const m = line.match(/^(\d+)[x\s]+(.+)$/i);
+      if (m) parsed.push({ count: parseInt(m[1]), name: m[2].trim().replace(/\s*\/\/.*$/, '').trim() });
     }
-    let si=0;
-    while(cards.length<cardCount&&spellPool.length>0){cards.push({...spellPool[si%spellPool.length],instanceId:uid()});si++;}
+    if (!parsed.length) throw new Error('Could not parse AI card list');
 
-    const deckName = prompt.slice(0,30) + ' Deck';
-    const groups={};
-    cards.forEach(c=>{if(!groups[c.name])groups[c.name]={card:c,count:0};groups[c.name].count++;});
+    el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">🔍 Fetching cards from Scryfall (0/' + parsed.length + ')...</div>';
 
-    el.innerHTML=`<div class="ai-result-box">
+    // Step 3: Fetch each card from Scryfall
+    const cards = [];
+    let fetched = 0;
+    for (const { count, name } of parsed) {
+      try {
+        const res = await fetch('https://api.scryfall.com/cards/named?fuzzy=' + encodeURIComponent(name));
+        if (res.ok) {
+          const card = await res.json();
+          for (let i = 0; i < count; i++) cards.push({ ...card, instanceId: Math.random().toString(36).slice(2) });
+        } else {
+          for (let i = 0; i < count; i++) cards.push({ name, id: name + i });
+        }
+      } catch {
+        for (let i = 0; i < count; i++) cards.push({ name, id: name + i });
+      }
+      fetched++;
+      if (fetched % 5 === 0) el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">🔍 Fetching from Scryfall (' + fetched + '/' + parsed.length + ')...</div>';
+      await new Promise(r => setTimeout(r, 110));
+    }
+
+    // Step 4: Render result
+    const deckName = prompt.slice(0, 40) + ' Deck';
+    const groups = {};
+    cards.forEach(c => { if (!groups[c.name]) groups[c.name] = { card: c, count: 0 }; groups[c.name].count++; });
+
+    el.innerHTML = `<div class="ai-result-box">
       <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold);margin-bottom:6px">${deckName}</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${cards.length} cards</div>
       <div id="ai-card-list" style="display:flex;flex-direction:column;gap:3px;margin-bottom:12px"></div>
-      <button class="btn-gold" onclick="saveAIDeck()">Save This Deck</button>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn-gold" style="flex:1" onclick="saveAIDeck()">Save This Deck</button>
+        <button class="btn-ask" onclick="clearAIDeck()">✕ Clear</button>
+        <button class="btn-ask" onclick="rebuildAIDeck()">↺ Redo</button>
+      </div>
     </div>`;
-    Object.values(groups).forEach(g=>{
-      const d=document.createElement('div');d.className='deck-item';
-      d.innerHTML=`<span style="flex:1;font-size:12px">${g.count}x ${g.card.name}</span>`;
+    Object.values(groups).forEach(g => {
+      const d = document.createElement('div'); d.className = 'deck-item';
+      d.innerHTML = `<span style="flex:1;font-size:12px">${g.count}x ${g.card.name}</span>`;
       document.getElementById('ai-card-list').appendChild(d);
     });
-    window._aiDeckCards=cards; window._aiDeckName=deckName; window._aiDeckFormat=format;
-  } catch(e) { el.innerHTML=`<div style="color:var(--red);font-size:13px">Failed: ${e.message}</div>`; }
-  document.getElementById('ai-build-btn').disabled=false;
+    window._aiDeckCards = cards; window._aiDeckName = deckName; window._aiDeckFormat = format;
+    window._aiDeckPrompt = prompt;
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--red);font-size:13px">Failed: ${e.message}</div>`;
+  }
+  document.getElementById('ai-build-btn').disabled = false;
 };
+
+window.clearAIDeck = () => {
+  window._aiDeckCards = null; window._aiDeckName = null; window._aiDeckFormat = null; window._aiDeckPrompt = null;
+  document.getElementById('ai-deck-result').innerHTML = '';
+  document.getElementById('ai-deck-prompt').value = '';
+};
+
+window.rebuildAIDeck = () => {
+  // Keep the same prompt and just rebuild
+  buildAIDeck();
+};
+
 
 window.importDeckList = async () => {
   const name = document.getElementById('import-deck-name').value.trim() || 'Imported Deck';
@@ -1235,11 +1270,9 @@ window.saveAIDeck = async () => {
   await saveProfile();
   toast('"' + name + '" saved! (' + cards.length + ' cards)');
   // Reset AI deck builder
-  window._aiDeckCards = null; window._aiDeckName = null; window._aiDeckFormat = null;
-  const resultEl = document.getElementById('ai-result');
-  if (resultEl) resultEl.innerHTML = '';
-  const promptEl = document.getElementById('ai-deck-prompt');
-  if (promptEl) promptEl.value = '';
+  window._aiDeckCards = null; window._aiDeckName = null; window._aiDeckFormat = null; window._aiDeckPrompt = null;
+  document.getElementById('ai-deck-result').innerHTML = '';
+  document.getElementById('ai-deck-prompt').value = '';
   showScreen('library'); showLibTab('decks');
 };
 
@@ -1262,7 +1295,7 @@ async function cleanMyRooms() {
   }
 }
 
-async function loadRooms() {
+async async function loadRooms() {
   const container=document.getElementById('rooms-grid'); container.innerHTML='';
   for(let i=1;i<=4;i++){
     const snap=await getDoc(doc(db,'rooms',`table-${i}`));
@@ -1979,7 +2012,7 @@ window.unpublishDeck = async (deckIdx) => {
   } catch(e) { toast('Failed: ' + e.message, true); }
 };
 
-async function loadCommunityDecks() {
+async async function loadCommunityDecks() {
   const el = document.getElementById('community-list');
   el.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Loading...</div>';
   try {
@@ -1990,7 +2023,7 @@ async function loadCommunityDecks() {
       return;
     }
     const decks = [];
-    snap.forEach(d => decks.push(d.data()));
+    snap.forEach(d => decks.push({ ...d.data(), id: d.id }));
     decks.sort((a,b) => b.publishedAt - a.publishedAt);
     decks.forEach(deck => {
       const isOwn = deck.authorId === currentProfile.uid;
