@@ -1425,7 +1425,12 @@ window.removeCommunityDeck = async (pubId) => {
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-initProfile();
+// Wait for DOM to be ready before initialising (required when script is in <head>)
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initProfile);
+} else {
+  initProfile();
+}
 // goHome is called by initProfile or confirmWelcome
 
 </script>
