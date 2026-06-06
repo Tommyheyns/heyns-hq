@@ -1989,7 +1989,7 @@ window.unpublishDeck = async (deckIdx) => {
   } catch(e) { toast('Failed: ' + e.message, true); }
 };
 
-async function loadCommunityDecks() {
+window.loadCommunityDecks = async function loadCommunityDecks() {
   const el = document.getElementById('community-list');
   el.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Loading...</div>';
   try {
