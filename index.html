@@ -208,7 +208,7 @@ window.searchCards=async(resultElId,mode,page)=>{
     pager.innerHTML='';
     if(d.has_more||page>1){
       const info=document.createElement('span');info.style.cssText='font-size:11px;color:var(--muted);flex:1';
-      info.textContent=`Page ${page} · ${(d.data||[]).length} cards`;
+      info.textContent=`Page ${page} - ${(d.data||[]).length} cards`;
       pager.appendChild(info);
       // Back to top button
       const top=document.createElement('button');top.className='btn-sm';top.textContent='↑ Top';
@@ -345,7 +345,7 @@ function renderMyDecks(){
     const d=document.createElement('div');d.className='deck-row'+(selected?' selected':'');
     d.innerHTML=`<div style="flex:1;cursor:pointer" onclick="openDeckViewer(${i})">
       <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">${deck.name}</div>
-      <div style="font-size:11px;color:var(--muted)">${deck.cards?.length||0} cards · ${deck.format==='commander'?'Commander':'Standard'}${deck.aiBuilt?' · 🤖':''}</div>
+      <div style="font-size:11px;color:var(--muted)">${deck.cards?.length||0} cards - ${deck.format==='commander'?'Commander':'Standard'}${deck.aiBuilt?' - 🤖':''}</div>
       <div style="font-size:10px;color:var(--gold-dim);margin-top:2px;letter-spacing:1px">TAP TO VIEW DECK ›</div>
     </div>
     <div style="display:flex;gap:6px">
@@ -1162,7 +1162,7 @@ function renderDraftResults(room){
   el.innerHTML=`<div style="text-align:center;margin-bottom:16px">
     <div style="font-size:40px">🏆</div>
     <div style="font-family:'Cinzel',serif;font-size:22px;color:var(--gold);letter-spacing:3px">${sorted[0]?.username||'?'}</div>
-    <div style="font-size:12px;color:var(--muted);margin-top:4px">Tournament Winner · ${wins[sorted[0]?.uid]||0} wins</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">Tournament Winner - ${wins[sorted[0]?.uid]||0} wins</div>
   </div>`;
   sorted.forEach((p,i)=>{
     const d=document.createElement('div');d.style.cssText='display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;align-items:center';
@@ -1339,133 +1339,221 @@ window.startAIGame=async()=>{
   document.getElementById('ai-start-btn').disabled=false;
 };
 
+
+window.  if(!aiGame)return;
+  aiGame.playerLife=Math.max(0,aiGame.playerLife+delta);
+  renderAIGame();
+};
+window.  if(!aiGame)return;
+  aiGame.aiLife=Math.max(0,aiGame.aiLife+delta);
+  renderAIGame();
+};
+
+
+// ── AI Game Functions ─────────────────────────────────────────────────────────
+function renderAIGame(){
+  if(!aiGame)return;
+  const g=id=>document.getElementById(id);
+  if(g('ai-life-display')){g('ai-life-display').textContent=aiGame.aiLife;g('ai-life-display').classList.toggle('low',aiGame.aiLife<=5);}
+  if(g('player-life-display')){g('player-life-display').textContent=aiGame.playerLife;g('player-life-display').classList.toggle('low',aiGame.playerLife<=5);}
+  if(g('ai-hand-count'))g('ai-hand-count').textContent=aiGame.aiHand.length;
+  if(g('ai-lib-count'))g('ai-lib-count').textContent=aiGame.aiLibrary.length;
+  if(g('player-lib-count'))g('player-lib-count').textContent=aiGame.playerLibrary.length;
+  if(g('ai-gy-count'))g('ai-gy-count').textContent=aiGame.playerGraveyard.length;
+  const turnEl=g('ai-turn-indicator');
+  if(turnEl){turnEl.textContent=aiGame.turn==='player'?'⚔ Your Turn':'🤖 AI Turn';turnEl.style.color=aiGame.turn==='player'?'var(--green)':'var(--red)';}
+  // Player hand
+  const handEl=g('player-hand-cards');
+  if(handEl){
+    handEl.innerHTML='';
+    if(!aiGame.playerHand.length){
+      handEl.innerHTML='<div style="color:var(--muted);font-size:12px;padding:8px">Empty — tap Draw</div>';
+    } else {
+      aiGame.playerHand.forEach((card,i)=>{
+        const url=imgUrl(card);
+        const d=document.createElement('div');d.className='card-thumb';d.style.cursor='pointer';
+        d.innerHTML=url?`<img src="${url}" loading="lazy" style="width:54px;height:76px;border-radius:5px">`
+          :`<div style="width:54px;height:76px;background:var(--bg4);border:1px solid var(--gold-dim);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:8px;color:var(--text);text-align:center;padding:2px">${card.name||'?'}</div>`;
+        d.onclick=()=>showAICardMenu(card,i);
+        handEl.appendChild(d);
+      });
+    }
+  }
+  // Player battlefield
+  const pbf=g('player-ai-bf');
+  if(pbf){
+    pbf.innerHTML='';
+    aiGame.playerBattlefield.forEach((card,i)=>{
+      const d=document.createElement('div');
+      if(card.isToken){d.className='token-chip';d.innerHTML=`<div class="token-pt">${card.pt}</div><div style="font-size:8px;color:var(--muted)">${card.tokenName}</div>`;}
+      else{
+        d.className='card-thumb'+(card.tapped?' tapped':'');
+        const url=imgUrl(card);
+        d.innerHTML=url?`<img src="${url}" loading="lazy" style="width:54px;height:76px;border-radius:5px">`
+          :`<div style="width:54px;height:76px;background:var(--bg4);border:1px solid var(--gold-dim);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:8px;color:var(--text);text-align:center;padding:2px">${card.name||'?'}</div>`;
+      }
+      d.onclick=()=>showAIBfMenu(card,i);
+      pbf.appendChild(d);
+    });
+  }
+  // AI battlefield
+  const aibf=g('ai-bf');
+  if(aibf){
+    aibf.innerHTML='';
+    aiGame.aiBattlefield.forEach((card,i)=>{
+      const d=document.createElement('div');
+      if(card.isToken){d.className='token-chip';d.innerHTML=`<div class="token-pt">${card.pt}</div><div style="font-size:8px;color:var(--muted)">${card.tokenName}</div>`;}
+      else{
+        d.className='card-thumb'+(card.tapped?' tapped':'');
+        const url=imgUrl(card);
+        d.innerHTML=url?`<img src="${url}" loading="lazy" style="width:54px;height:76px;border-radius:5px">`
+          :`<div style="width:54px;height:76px;background:var(--bg4);border:1px solid var(--border2);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:8px;color:var(--text);text-align:center;padding:2px">${card.name||'?'}</div>`;
+        if(url) d.onclick=()=>previewCard(url);
+      }
+      aibf.appendChild(d);
+    });
+  }
+  // Log
+  const logEl=g('ai-game-log');
+  if(logEl){logEl.innerHTML=aiGame.log.slice(-8).map(l=>`<div style="padding:2px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--text)">${l}</div>`).join('');logEl.scrollTop=logEl.scrollHeight;}
+  // Win/loss
+  if(aiGame.aiLife<=0||aiGame.playerLife<=0){
+    const won=aiGame.aiLife<=0;
+    g('ai-action-btns').style.display='none';
+    const wb=g('ai-win-banner');if(wb){wb.style.display='block';g('ai-win-msg').textContent=won?'🏆 You Win!':'💀 AI Wins!';}
+  }
+}
+
+function aiLog(msg){if(aiGame)aiGame.log.push(msg);}
+
+function showAICardMenu(card,idx){
+  if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}
+  const isLand=card.type_line&&card.type_line.toLowerCase().includes('land');
+  showActionSheet(card.name,[
+    {label:`⊕ Play${isLand?' Land':''}: ${card.name}`,fn:()=>aiPlayCard(card,idx,isLand)},
+    {label:'☠ Discard',fn:()=>{aiGame.playerHand.splice(idx,1);aiGame.playerGraveyard.push(card);aiLog(`You discarded ${card.name}`);renderAIGame();}},
+    {label:'🔍 Preview',fn:()=>previewCard(imgUrl(card))},
+  ]);
+}
+
+function aiPlayCard(card,idx,isLand){
+  if(isLand){
+    if(aiGame.playerLandsPlayed>=1){toast('Already played a land!',true);return;}
+    aiGame.playerHand.splice(idx,1);
+    aiGame.playerBattlefield.push({...card,tapped:false,instanceId:uid()});
+    aiGame.playerLandsPlayed++;
+    aiLog(`You played land: ${card.name}`);
+  } else {
+    aiGame.playerHand.splice(idx,1);
+    aiGame.playerBattlefield.push({...card,tapped:false,instanceId:uid()});
+    aiLog(`You played: ${card.name}`);
+  }
+  renderAIGame();
+}
+
+function showAIBfMenu(card,idx){
+  if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}
+  showActionSheet(card.name,[
+    {label:card.tapped?'↺ Untap':'↷ Tap',fn:()=>{aiGame.playerBattlefield[idx].tapped=!card.tapped;aiLog(`You ${card.tapped?'untapped':'tapped'} ${card.name}`);renderAIGame();}},
+    {label:'⚔ Attack',fn:()=>{
+      if(card.tapped){toast('Already tapped!',true);return;}
+      aiGame.playerBattlefield[idx].tapped=true;
+      const dmg=parseInt(card.power)||0;
+      aiGame.aiLife=Math.max(0,aiGame.aiLife-dmg);
+      aiLog(`⚔ You attacked with ${card.name} — AI takes ${dmg} damage`);
+      renderAIGame();
+    }},
+    {label:'☠ To Graveyard',fn:()=>{aiGame.playerBattlefield.splice(idx,1);aiGame.playerGraveyard.push(card);aiLog(`${card.name} → graveyard`);renderAIGame();}},
+    {label:'🔍 Preview',fn:()=>previewCard(imgUrl(card))},
+  ]);
+}
+
+window.aiDrawCard=()=>{
+  if(!aiGame){toast('No active game',true);return;}
+  if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}
+  if(!aiGame.playerLibrary.length){toast('Library empty!',true);return;}
+  const card=aiGame.playerLibrary.shift();
+  aiGame.playerHand.push(card);
+  aiLog(`You drew: ${card.name}`);
+  renderAIGame();
+};
+
+window.aiUntapAll=()=>{
+  if(!aiGame){return;}
+  if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}
+  aiGame.playerBattlefield=aiGame.playerBattlefield.map(c=>({...c,tapped:false}));
+  aiLog('You untapped all');
+  renderAIGame();
+};
+
+window.aiEndTurn=async()=>{
+  if(!aiGame){return;}
+  if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}
+  aiLog('--- Your turn ended ---');
+  aiGame.turn='ai';aiGame.playerLandsPlayed=0;
+  renderAIGame();
+  await doAITurn();
+};
+
+window.aiChangeLife=(delta)=>{if(aiGame){aiGame.playerLife=Math.max(0,aiGame.playerLife+delta);renderAIGame();}};
+window.aiChangeAILife=(delta)=>{if(aiGame){aiGame.aiLife=Math.max(0,aiGame.aiLife+delta);renderAIGame();}};
+
 async function doAITurn(){
   const diff=aiGame.difficulty;
-  aiLog('🤖 AI is thinking…');
-  await sleep(800);
-
-  // Untap
+  aiLog('🤖 AI thinking…');await sleep(600);
   aiGame.aiBattlefield=aiGame.aiBattlefield.map(c=>({...c,tapped:false}));
-  aiLog('🤖 AI untapped all');
-  await sleep(400);
-
-  // Draw
-  if(aiGame.aiLibrary.length){
-    aiGame.aiHand.push(aiGame.aiLibrary.shift());
-    aiLog('🤖 AI drew a card');
-  }
-  await sleep(400);
-  renderAIGame();
-
-  // Play land if has one
+  aiLog('🤖 AI untapped');await sleep(300);
+  if(aiGame.aiLibrary.length){aiGame.aiHand.push(aiGame.aiLibrary.shift());aiLog('🤖 AI drew a card');}
+  await sleep(400);renderAIGame();
+  // Play land
   const landIdx=aiGame.aiHand.findIndex(c=>c.type_line&&c.type_line.toLowerCase().includes('land'));
   if(landIdx>=0&&aiGame.aiLandsPlayed<1){
     const land=aiGame.aiHand.splice(landIdx,1)[0];
     aiGame.aiBattlefield.push({...land,tapped:false,instanceId:uid()});
-    aiGame.aiLandsPlayed++;
-    aiLog(`🤖 AI played ${land.name}`);
-    await sleep(600);
-    renderAIGame();
+    aiGame.aiLandsPlayed++;aiLog(`🤖 AI played land: ${land.name}`);await sleep(500);renderAIGame();
   }
-
-  // Count available mana (untapped lands)
-  const manaAvailable=aiGame.aiBattlefield.filter(c=>c.type_line&&c.type_line.toLowerCase().includes('land')&&!c.tapped).length;
-
-  // Play creatures/spells (easy: random, medium: cheapest first, hard: best value)
-  let manaLeft=manaAvailable;
-  const playable=aiGame.aiHand.filter(c=>{
-    if(!c.type_line||c.type_line.toLowerCase().includes('land'))return false;
-    const cmc=c.cmc||0;
-    return cmc<=manaLeft;
-  });
-
+  // Play spells
+  const mana=aiGame.aiBattlefield.filter(c=>c.type_line&&c.type_line.toLowerCase().includes('land')&&!c.tapped).length;
+  let manaLeft=mana;
+  const playable=aiGame.aiHand.filter(c=>c.type_line&&!c.type_line.toLowerCase().includes('land')&&(c.cmc||0)<=manaLeft);
   let toPlay=[];
-  if(diff==='easy'){
-    // Easy: maybe play one random card
-    if(playable.length&&Math.random()>0.4) toPlay=[playable[Math.floor(Math.random()*playable.length)]];
-  } else if(diff==='medium'){
-    // Medium: play cheapest cards
-    toPlay=playable.sort((a,b)=>(a.cmc||0)-(b.cmc||0)).slice(0,2);
-  } else {
-    // Hard: play as many as possible, most expensive first
-    toPlay=playable.sort((a,b)=>(b.cmc||0)-(a.cmc||0));
-    let spent=0;
-    toPlay=toPlay.filter(c=>{if(spent+(c.cmc||0)<=manaLeft){spent+=(c.cmc||0);return true;}return false;});
-  }
-
+  if(diff==='easy'){toPlay=playable.length&&Math.random()>0.4?[playable[Math.floor(Math.random()*playable.length)]]:[]; }
+  else if(diff==='medium'){toPlay=playable.sort((a,b)=>(a.cmc||0)-(b.cmc||0)).slice(0,2);}
+  else{toPlay=playable.sort((a,b)=>(b.cmc||0)-(a.cmc||0));}
+  let spent=0;
+  toPlay=toPlay.filter(c=>{if(spent+(c.cmc||0)<=mana){spent+=(c.cmc||0);return true;}return false;});
   for(const card of toPlay){
-    const idx=aiGame.aiHand.findIndex(c=>c.instanceId===card.instanceId);
-    if(idx>=0){
-      aiGame.aiHand.splice(idx,1);
-      aiGame.aiBattlefield.push({...card,tapped:false,instanceId:uid()});
-      aiLog(`🤖 AI played ${card.name}`);
-      await sleep(600);
-      renderAIGame();
-    }
+    const i=aiGame.aiHand.findIndex(c=>c.instanceId===card.instanceId);
+    if(i>=0){aiGame.aiHand.splice(i,1);aiGame.aiBattlefield.push({...card,tapped:false,instanceId:uid()});aiLog(`🤖 AI played: ${card.name}`);await sleep(500);renderAIGame();}
   }
-
-  // Attack phase
-  const attackers=aiGame.aiBattlefield.filter(c=>{
-    if(!c.type_line||!c.type_line.toLowerCase().includes('creature'))return false;
-    if(c.tapped)return false;
-    return true;
-  });
-
-  let willAttack=[];
-  if(diff==='easy'){
-    // Easy: attack with ~50% of creatures randomly
-    willAttack=attackers.filter(()=>Math.random()>0.5);
-  } else if(diff==='medium'){
-    // Medium: attack if we have power advantage
-    willAttack=attackers.filter(c=>(parseInt(c.power)||0)>0);
-  } else {
-    // Hard: attack with everything
-    willAttack=attackers;
-  }
-
+  // Attack
+  const attackers=aiGame.aiBattlefield.filter(c=>c.type_line&&c.type_line.toLowerCase().includes('creature')&&!c.tapped);
+  let willAttack=diff==='easy'?attackers.filter(()=>Math.random()>0.5):diff==='medium'?attackers.filter(c=>(parseInt(c.power)||0)>0):attackers;
   if(willAttack.length){
-    let totalDamage=0;
-    for(const att of willAttack){
-      const idx=aiGame.aiBattlefield.findIndex(c=>c.instanceId===att.instanceId);
-      if(idx>=0){
-        aiGame.aiBattlefield[idx].tapped=true;
-        const dmg=parseInt(att.power)||0;
-        totalDamage+=dmg;
-      }
-    }
-    aiGame.playerLife=Math.max(0,aiGame.playerLife-totalDamage);
-    aiLog(`⚔ AI attacked with ${willAttack.length} creature(s) — you take ${totalDamage} damage`);
-    await sleep(800);
-    renderAIGame();
+    let dmg=0;
+    willAttack.forEach(att=>{
+      const i=aiGame.aiBattlefield.findIndex(c=>c.instanceId===att.instanceId);
+      if(i>=0){aiGame.aiBattlefield[i].tapped=true;dmg+=parseInt(att.power)||0;}
+    });
+    aiGame.playerLife=Math.max(0,aiGame.playerLife-dmg);
+    aiLog(`⚔ AI attacked with ${willAttack.length} creature(s) — you take ${dmg} damage`);
+    await sleep(700);renderAIGame();
   }
-
   // End AI turn
-  aiGame.aiLandsPlayed=0;
-  aiGame.turn='player';
-  // Draw for player at start of their turn
-  if(aiGame.playerLibrary.length){
-    aiGame.playerHand.push(aiGame.playerLibrary.shift());
-    aiLog('You drew a card for your turn');
-  }
+  aiGame.aiLandsPlayed=0;aiGame.turn='player';
+  if(aiGame.playerLibrary.length){aiGame.playerHand.push(aiGame.playerLibrary.shift());aiLog('You drew for your turn');}
   aiGame.playerBattlefield=aiGame.playerBattlefield.map(c=>({...c,tapped:false}));
   aiLog('--- Your turn ---');
-  renderAIGame();
-  toast('Your turn!');
+  renderAIGame();toast('Your turn!');
 }
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-
-window.aiChangeLife=(delta)=>{
-  if(!aiGame)return;
-  aiGame.playerLife=Math.max(0,aiGame.playerLife+delta);
-  renderAIGame();
-};
-window.aiChangeAILife=(delta)=>{
-  if(!aiGame)return;
-  aiGame.aiLife=Math.max(0,aiGame.aiLife+delta);
-  renderAIGame();
-};
 </script>
+
+</head>
+<body>
+<div id="intro"><div class="rune">🜲</div><div class="brand">HEYNS HQ</div><div class="tagline">The Gathering Table</div></div>
+
 <style>
 :root{--gold:#c8a84b;--gold-dim:#7a6530;--bg:#080705;--bg2:#0f0d08;--bg3:#161208;--bg4:#1e1810;--border:#2a2210;--border2:#3a3018;--red:#e05a5a;--green:#5ae07a;--purple:#b07ae0;--text:#d4c08a;--muted:#7a6a44;--safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -1688,7 +1776,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.5</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.7</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="doLogout()">Sign Out</button>
@@ -1707,7 +1795,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- LIBRARY -->
 <div class="screen" id="screen-library">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.5</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.7</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="lib-tabs">
     <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">🔍 Search</div>
     <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">📚 Collection</div>
@@ -1746,7 +1834,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <input class="inp" id="search-inp-search" placeholder="Card name (optional)…" style="flex:1" onkeydown="if(event.key==='Enter')searchCards('search-results','search')">
       <button class="btn-ask" onclick="searchCards('search-results','search')">Search</button>
     </div>
-    <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:2px;color:var(--gold);margin-bottom:4px">RESULTS — TAP TO ZOOM · SAVE TO COLLECTION</div>
+    <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:2px;color:var(--gold);margin-bottom:4px">RESULTS — TAP TO ZOOM - SAVE TO COLLECTION</div>
     <div class="results-grid" id="search-results"></div>
   </div>
   <div class="lib-view" id="lv-collection">
@@ -1765,7 +1853,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- DECK BUILDER -->
 <div class="screen" id="screen-deckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.5</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.7</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
     <input class="inp" id="deck-name-inp" placeholder="Deck name…" style="flex:1">
     <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
@@ -1795,7 +1883,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- AI DECK BUILDER -->
 <div class="screen" id="screen-aideckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.5</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.7</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">🤖 AI Deck Builder</div>
     <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
@@ -1813,7 +1901,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- ROOMS -->
 <div class="screen" id="screen-rooms">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.5</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.7</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
     <div class="rooms-grid" id="rooms-grid"></div>
@@ -1908,7 +1996,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- DRAFT ROOM -->
 <div class="screen" id="screen-draftroom">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.5</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.7</span></div>
     <div style="display:flex;gap:6px"><button class="icon-btn" onclick="goHome()">🏠</button><button class="icon-btn" onclick="leaveDraftRoom()">Leave</button></div>
   </div>
   <div style="padding:8px 14px;border-bottom:1px solid var(--border2);flex-shrink:0">
@@ -1982,7 +2070,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- WHO'S PLAYING -->
 <div class="screen" id="screen-whoplaying">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.5</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.7</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
     <div id="who-list"></div>
@@ -2081,7 +2169,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- AI PRACTICE TABLE -->
 <div class="screen" id="screen-aitable">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v2.5</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v2.7</span></div>
     <button class="icon-btn" onclick="goHome()">🏠 Home</button>
   </div>
   <!-- Setup -->
@@ -2123,7 +2211,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px">AI OPPONENT</div>
           <div style="display:flex;align-items:center;gap:8px">
-            <div style="font-size:10px;color:var(--muted)">✋ <span id="ai-hand-count">0</span> · 📚 <span id="ai-lib-count">0</span></div>
+            <div style="font-size:10px;color:var(--muted)">✋ <span id="ai-hand-count">0</span> - 📚 <span id="ai-lib-count">0</span></div>
             <div class="ai-life-big" id="ai-life-display">20</div>
           </div>
         </div>
@@ -2143,7 +2231,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px">YOU</div>
           <div style="display:flex;align-items:center;gap:8px">
-            <div style="font-size:10px;color:var(--muted)">📚 <span id="player-lib-count">0</span> · ☠ <span id="ai-gy-count">0</span></div>
+            <div style="font-size:10px;color:var(--muted)">📚 <span id="player-lib-count">0</span> - ☠ <span id="ai-gy-count">0</span></div>
             <div class="ai-life-big" id="player-life-display">20</div>
           </div>
         </div>
