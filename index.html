@@ -726,8 +726,10 @@ function initProfile() {
       currentProfile = JSON.parse(saved);
       currentUser = { uid: currentProfile.uid };
       // If they have a real name already, go straight home
-      if(currentProfile.username && currentProfile.username !== 'Player') return;
-      // Otherwise show welcome
+      if(currentProfile.username && currentProfile.username !== 'Player') {
+        goHome();
+        return;
+      }
     } catch {}
   }
   if(!currentUser) {
@@ -735,7 +737,7 @@ function initProfile() {
     currentProfile = { uid: currentUser.uid, username: '', decks: [], collection: [] };
   }
   // Show welcome screen
-  setTimeout(() => showScreen('screen-welcome'), 100);
+  showScreen('screen-welcome');
 }
 
 window.confirmWelcome = () => {
