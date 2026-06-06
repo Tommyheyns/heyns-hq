@@ -219,7 +219,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home" style="display:flex;flex-direction:column">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v5.3</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v5.5</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="editUsername()">✎ Name</button>
@@ -699,6 +699,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <div id="toast"></div>
 
 <script type="module">
+// Global error catcher
+window.onerror = (msg, src, line) => { console.error('JS Error:', msg, 'line:', line); };
+window.onunhandledrejection = e => { console.error('Promise rejection:', e.reason); };
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -711,8 +715,13 @@ const firebaseConfig = {
   appId: "1:51542045403:web:06d0295aec60edb97092fe"
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+let app, db;
+try {
+  app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+} catch(e) {
+  console.error('Firebase init failed:', e);
+}
 
 
 
@@ -766,7 +775,7 @@ function saveProfileLocal() {
 
 async function saveProfile() {
   saveProfileLocal();
-  try { await setDoc(doc(db, 'users', currentUser.uid), currentProfile); } catch {}
+  if(db) try { await setDoc(doc(db, 'users', currentUser.uid), currentProfile); } catch(e){console.warn("Firebase save failed:",e);}
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
