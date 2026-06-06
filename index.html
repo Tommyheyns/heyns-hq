@@ -299,7 +299,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v6.4</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v6.6</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="editUsername()">✎ Name</button>
@@ -614,6 +614,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <button class="ctrl-btn primary" onclick="aiDrawCard()">Draw</button>
       <button class="ctrl-btn primary" onclick="aiUntapAll()">Untap All</button>
       <button class="ctrl-btn" onclick="showAITokenOverlay()">+ Token</button>
+      <button class="ctrl-btn" onclick="aiShuffleLibrary()">Shuffle Lib</button>
       <button class="ctrl-btn primary" onclick="aiEndTurn()">End Turn</button>
     </div>
   </div>
@@ -1311,52 +1312,88 @@ window.buildAIDeck = async () => {
       }
     }
 
-    // Step 3: Build keyword/mechanic query — this is the key fix
-    // Search for the EXACT mechanic/keyword in oracle text
+    // Step 3: Build a precise Scryfall query from the prompt
     let mechanicQuery = '';
-    const keywords = [
-      'bloodthirst','deathtouuh','deathtouch','trample','haste','lifelink','vigilance',
+    let foundKeyword = '';
+
+    // Check for named mechanics first (search oracle text)
+    const oracleKeywords = [
+      'bloodthirst','deathtouch','trample','haste','lifelink','vigilance',
       'flying','reach','flash','hexproof','indestructible','menace','first strike',
       'double strike','proliferate','infect','toxic','convoke','delve','madness',
       'flashback','cycling','kicker','enrage','riot','adapt','mutate','exploit',
-      'sacrifice','tribal','token','counter','burn','aggro','control','ramp',
-      'graveyard','reanimator','mill','combo','voltron'
+      'undying','persist','extort','dredge','scry','surveil','amass','encore',
+      'venture','foretell','learn','disturb','daybound','nightbound','cleave',
     ];
+    foundKeyword = oracleKeywords.find(k => p.includes(k)) || '';
 
-    // Find the most specific keyword in the prompt
-    const foundKeyword = keywords.find(k => p.includes(k));
+    // Check for creature subtypes
+    const subtypes = ['vampire','zombie','dragon','goblin','elf','wizard','knight',
+      'soldier','merfolk','angel','demon','beast','druid','shaman','warrior',
+      'pirate','dinosaur','human','rogue','cleric','cat','bird','snake','spider',
+      'saproling','elemental','spirit','horror','giant','faerie','dwarf'];
+    const foundSubtype = subtypes.find(t => p.includes(t)) || '';
 
-    if (foundKeyword) {
-      // Search oracle text for the mechanic
-      mechanicQuery = `o:"${foundKeyword}"`;
-    } else if (anchorCard) {
-      // Build around anchor card's type
+    // Check for strategy keywords
+    const strategies = {
+      'sacrifice':'o:sacrifice','graveyard':'o:graveyard','mill':'o:mill',
+      'token':'o:token','counter':'o:counter','burn':'o:damage',
+      'lifegain':'o:"gain life"','life gain':'o:"gain life"',
+      'discard':'o:discard','draw':'o:"draw a card"','ramp':'o:"add {',
+      'control':'keyword:flying','tribal':foundSubtype?'type:'+foundSubtype:'type:creature',
+    };
+    const foundStrategy = Object.keys(strategies).find(k => p.includes(k)) || '';
+
+    // Build the query — most specific wins
+    if (anchorCard) {
+      // Build around the named card's creature type
       const type = anchorCard.type_line || '';
-      const subtypes = ['Vampire','Zombie','Dragon','Goblin','Elf','Wizard','Knight',
-                        'Soldier','Merfolk','Angel','Demon','Beast','Druid'];
-      const subtype = subtypes.find(t => type.includes(t));
-      if (subtype) mechanicQuery = `type:${subtype.toLowerCase()}`;
-      else mechanicQuery = 'type:creature';
+      const anchorSubtype = subtypes.find(t => type.toLowerCase().includes(t));
+      if (anchorSubtype) {
+        mechanicQuery = `type:${anchorSubtype}`;
+        foundKeyword = anchorSubtype;
+      } else if (foundKeyword) {
+        mechanicQuery = `o:"${foundKeyword}"`;
+      } else {
+        mechanicQuery = 'type:creature';
+      }
+    } else if (foundKeyword) {
+      mechanicQuery = `o:"${foundKeyword}"`;
+    } else if (foundSubtype) {
+      mechanicQuery = `type:${foundSubtype}`;
+      foundKeyword = foundSubtype;
+    } else if (foundStrategy) {
+      mechanicQuery = strategies[foundStrategy];
+      foundKeyword = foundStrategy;
     } else {
-      mechanicQuery = 'type:creature';
+      // Last resort - use the prompt itself as an oracle text search
+      mechanicQuery = `o:"${prompt.slice(0,20)}"`;
+      foundKeyword = prompt.slice(0,20);
     }
 
-    // Build colour filter
+    // Build colour filter — ONLY add colour if we found colours from prompt/card
+    // Don't add colour if only mechanic was specified, to get all relevant cards
     const colStr = colours.join('');
-    const colFilter = colours.length === 1 ? `color=${colours[0]}` : `color<=${colStr}`;
+    const colFilter = colours.length > 0 ? (colours.length === 1 ? `color=${colours[0]}` : `color<=${colStr}`) : '';
 
-    // Step 4: Fetch cards matching the mechanic
-    const query = `${colFilter} ${mechanicQuery} -type:land`;
-    el.innerHTML = `<div style="color:var(--muted);font-size:13px">Searching for "${mechanicQuery.replace('o:','')}..." </div>`;
+    // Step 4: Fetch cards — try with colour first, then without
+    const query = [colFilter, mechanicQuery, '-type:land'].filter(Boolean).join(' ');
+    el.innerHTML = `<div style="color:var(--muted);font-size:13px">Searching for "${foundKeyword || prompt}"...</div>`;
+    let sd;
     const sr = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=edhrec&unique=cards`);
-    if (!sr.ok) {
-      // Fallback - remove colour restriction
-      const sr2 = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(mechanicQuery + ' -type:land')}&order=edhrec&unique=cards`);
-      if (!sr2.ok) throw new Error('No cards found for "' + prompt + '". Try being more specific.');
-      var sd = await sr2.json();
-    } else {
-      var sd = await sr.json();
+    if (sr.ok) {
+      sd = await sr.json();
     }
+    // If not enough results with colour filter, try without colour
+    if (!sr.ok || (sd.data||[]).length < 10) {
+      const query2 = [mechanicQuery, '-type:land'].filter(Boolean).join(' ');
+      const sr2 = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query2)}&order=edhrec&unique=cards`);
+      if (sr2.ok) {
+        const sd2 = await sr2.json();
+        if ((sd2.data||[]).length > (sd?.data||[]).length) sd = sd2;
+      }
+    }
+    if (!sd || !(sd.data||[]).length) throw new Error('No cards found for "' + prompt + '". Try: "red goblin deck", "bloodthirst", "zombie sacrifice black"');
 
     const spellPool = (sd.data || []).filter(c => imgUrl(c)).slice(0, 60);
     if (!spellPool.length) throw new Error('No cards found. Try different wording.');
@@ -1940,6 +1977,13 @@ window.aiDrawCard=()=>{
   const card=aiGame.playerLibrary.shift();aiGame.playerHand.push(card);
   aiGame.log.push('You drew: '+card.name);renderAIGame();
 };
+window.aiShuffleLibrary=()=>{
+  if(!aiGame)return;
+  aiGame.playerLibrary=shuffle(aiGame.playerLibrary);
+  aiGame.log.push('You shuffled your library ('+aiGame.playerLibrary.length+' cards)');
+  renderAIGame();
+  toast('Library shuffled!');
+};
 window.aiUntapAll=()=>{if(!aiGame)return;if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}aiGame.playerBattlefield=aiGame.playerBattlefield.map(c=>({...c,tapped:false,summoningSick:false}));aiGame.log.push('You untapped all');renderAIGame();};
 window.aiEndTurn=async()=>{
   if(!aiGame)return;if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}
@@ -2192,6 +2236,7 @@ window.unpublishDeck = async (deckIdx) => {
 window.loadCommunityDecks = async function loadCommunityDecks() {
   const el = document.getElementById('community-list');
   el.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Loading...</div>';
+  if (!db) { el.innerHTML = '<div style="color:var(--red);font-size:13px;text-align:center;padding:20px">Firebase not connected. Check your internet and try again.</div>'; return; }
   try {
     const snap = await getDocs(collection(db, 'community_decks'));
     el.innerHTML = '';
@@ -2658,43 +2703,42 @@ function renderDraftPick() {
 
 window.confirmDraftPick = () => {
   if (!draftState) return;
-  const { allPacks, currentPack, myDraft, playerCount, packsEach, selectedCardIdx } = draftState;
-  if (selectedCardIdx === undefined || selectedCardIdx === null) {
+  if (draftState.selectedCardIdx === undefined || draftState.selectedCardIdx === null) {
     toast('Select a card first!', true); return;
   }
-  const myPack = allPacks[0][currentPack];
-  if (!myPack || !myPack.cards[selectedCardIdx]) return;
+  const myPack = draftState.allPacks[0][draftState.currentPack];
+  if (!myPack || !myPack.cards[draftState.selectedCardIdx]) {
+    toast('Invalid selection', true); return;
+  }
 
   // Pick the selected card
-  const picked = myPack.cards.splice(selectedCardIdx, 1)[0];
-  myDraft.push(picked);
+  const picked = myPack.cards.splice(draftState.selectedCardIdx, 1)[0];
+  draftState.myDraft.push(picked);
   draftState.currentPick++;
   draftState.selectedCardIdx = null;
   draftState.viewIdx = 0;
 
-  // Simulate other players picking one card each
-  for (let p = 1; p < playerCount; p++) {
-    const theirPack = allPacks[p][currentPack];
+  // Simulate other players picking one card each from their packs
+  for (let p = 1; p < draftState.playerCount; p++) {
+    const theirPack = draftState.allPacks[p][draftState.currentPack];
     if (theirPack && theirPack.cards.length > 0) {
       theirPack.cards.splice(Math.floor(Math.random() * theirPack.cards.length), 1);
     }
   }
 
-  // Rotate packs (pass to next player — simulated by just continuing with same pack)
-  // In real draft packs pass left/right but since it's solo-simulated we just keep going
   const remaining = myPack.cards.length;
 
   if (remaining === 0) {
-    // This pack is done — move to next pack
+    // Pack exhausted — move to next pack
     draftState.currentPack++;
     draftState.currentPick = 0;
     draftState.viewIdx = 0;
-    if (draftState.currentPack >= packsEach) {
+    if (draftState.currentPack >= draftState.packsEach) {
       finishDraft(); return;
     }
-    toast('Pack ' + (draftState.currentPack+1) + ' opened! Browse and select your card.');
+    toast('🎴 Pack ' + (draftState.currentPack+1) + ' opened from ' + draftState.allPacks[0][draftState.currentPack].setName + '!');
   } else {
-    toast('Pack passed! ' + remaining + ' cards remain.');
+    toast('Done! Pack passed — ' + remaining + ' cards left.');
   }
 
   renderDraftPick();
