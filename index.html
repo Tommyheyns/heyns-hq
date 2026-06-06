@@ -199,7 +199,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 </div>
 
 <!-- WELCOME (first time only) -->
-<div class="screen active" id="screen-welcome">
+<div class="screen" id="screen-welcome">
   <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:30px;gap:20px;background:radial-gradient(ellipse at 50% 30%,#1a1508,#080705)">
     <div style="font-size:56px">♛</div>
     <div style="font-family:'Cinzel',serif;font-size:28px;letter-spacing:8px;color:var(--gold);text-align:center">HEYNS HQ</div>
@@ -219,7 +219,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v5.2</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v5.3</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="editUsername()">✎ Name</button>
@@ -714,28 +714,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// Ensure app is visible even if Firebase is slow
-window.addEventListener('DOMContentLoaded', () => {
-  requestAnimationFrame(() => {
-    const anyActive = document.querySelector('.screen.active');
-    if (!anyActive) {
-      const saved = localStorage.getItem('heyns_profile');
-      if (saved) {
-        try {
-          const p = JSON.parse(saved);
-          if (p.username && p.username !== 'Player') {
-            document.getElementById('home-username').textContent = p.username;
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById('screen-home').classList.add('active');
-            return;
-          }
-        } catch {}
-      }
-      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-      document.getElementById('screen-welcome').classList.add('active');
-    }
-  });
-});
+
 
 // ── Globals ───────────────────────────────────────────────────────────────────
 let currentUser = null, currentProfile = null, currentRoom = null, roomUnsub = null, draftUnsub = null;
@@ -753,24 +732,22 @@ const shuffle = arr => { const a=[...arr]; for(let i=a.length-1;i>0;i--){const j
 
 // ── Local Profile (no login needed) ──────────────────────────────────────────
 function initProfile() {
-  const saved = localStorage.getItem('heyns_profile');
-  if (saved) {
-    try {
+  try {
+    const saved = localStorage.getItem('heyns_profile');
+    if (saved) {
       currentProfile = JSON.parse(saved);
       currentUser = { uid: currentProfile.uid };
-      // If they have a real name already, go straight home
-      if(currentProfile.username && currentProfile.username !== 'Player') {
+      if (currentProfile.username && currentProfile.username !== 'Player') {
         goHome();
         return;
       }
-    } catch {}
-  }
-  if(!currentUser) {
+    }
+  } catch(e) {}
+  if (!currentUser) {
     currentUser = { uid: 'user-' + uid() };
     currentProfile = { uid: currentUser.uid, username: '', decks: [], collection: [] };
   }
-  // Show welcome screen
-  showScreen('screen-welcome');
+  showScreen('welcome');
 }
 
 window.confirmWelcome = () => {
@@ -2116,18 +2093,7 @@ if (document.readyState === 'loading') {
 }
 // goHome is called by initProfile or confirmWelcome
 
-// Nuclear fallback: if nothing is visible after 1.5s, force a screen
-setTimeout(() => {
-  const active = document.querySelector('.screen.active');
-  if (!active) {
-    if (currentProfile && currentProfile.username && currentProfile.username !== 'Player') {
-      document.getElementById('home-username').textContent = currentProfile.username;
-      showScreen('home');
-    } else {
-      showScreen('screen-welcome');
-    }
-  }
-}, 1500);
+
 
 </script>
 </body>
