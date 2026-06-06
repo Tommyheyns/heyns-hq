@@ -1309,7 +1309,14 @@ window.startAIGame=async()=>{
     document.getElementById('ai-deck-label').textContent=`🤖 ${deckJson.deckName}`;
     renderAIGame();
   }catch(e){
-    statusEl.textContent='Failed: '+e.message+'. Try again.';
+    console.error('AI Game error:',e);
+    if(e.message.includes('fetch')){
+      statusEl.textContent='Network error — check your internet connection and try again.';
+    } else if(e.message.includes('API')||e.message.includes('key')){
+      statusEl.textContent='API error: '+e.message+'. Check OpenAI billing at platform.openai.com';
+    } else {
+      statusEl.textContent='Error: '+e.message+'. Try again.';
+    }
   }
   document.getElementById('ai-start-btn').disabled=false;
 };
@@ -1807,7 +1814,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.1</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.2</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="doLogout()">Sign Out</button>
@@ -1826,7 +1833,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- LIBRARY -->
 <div class="screen" id="screen-library">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.1</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.2</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="lib-tabs">
     <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">🔍 Search</div>
     <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">📚 Collection</div>
@@ -1884,7 +1891,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- DECK BUILDER -->
 <div class="screen" id="screen-deckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.1</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.2</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
     <input class="inp" id="deck-name-inp" placeholder="Deck name…" style="flex:1">
     <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
@@ -1914,7 +1921,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- AI DECK BUILDER -->
 <div class="screen" id="screen-aideckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.1</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.2</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">🤖 AI Deck Builder</div>
     <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
@@ -1932,7 +1939,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- ROOMS -->
 <div class="screen" id="screen-rooms">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.1</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.2</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
     <div class="rooms-grid" id="rooms-grid"></div>
@@ -2027,7 +2034,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- DRAFT ROOM -->
 <div class="screen" id="screen-draftroom">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.1</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.2</span></div>
     <div style="display:flex;gap:6px"><button class="icon-btn" onclick="goHome()">🏠</button><button class="icon-btn" onclick="leaveDraftRoom()">Leave</button></div>
   </div>
   <div style="padding:8px 14px;border-bottom:1px solid var(--border2);flex-shrink:0">
@@ -2101,7 +2108,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- WHO'S PLAYING -->
 <div class="screen" id="screen-whoplaying">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.1</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v2.2</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
     <div id="who-list"></div>
@@ -2200,17 +2207,14 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- AI PRACTICE TABLE -->
 <div class="screen" id="screen-aitable">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v2.1</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v2.2</span></div>
     <button class="icon-btn" onclick="goHome()">🏠 Home</button>
   </div>
   <!-- Setup -->
   <div id="ai-table-setup" style="display:flex;flex-direction:column;gap:12px;padding:16px;overflow-y:auto;flex:1">
     <div style="font-family:'Cinzel',serif;font-size:18px;color:var(--purple);letter-spacing:2px">🤖 AI Practice Table</div>
     <div style="font-size:13px;color:var(--muted);line-height:1.6">Play solo against an AI opponent. Make sure you have a deck selected in your Library first.</div>
-    <div>
-      <div class="zone-label">AI Deck Theme</div>
-      <input class="inp" id="ai-theme-inp" placeholder="Easy only: theme e.g. red goblins (Medium/Hard auto-counters your deck)">
-    </div>
+    <input type="hidden" id="ai-theme-inp" value="">
     <div>
       <div class="zone-label">Difficulty</div>
       <select class="inp" id="ai-difficulty">
@@ -2220,7 +2224,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       </select>
     </div>
     <div style="font-size:12px;color:var(--muted);background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px;line-height:1.6">
-      💡 Your selected deck will be used. On Medium/Hard the AI analyses your deck and builds a counter. On Easy it plays randomly.
+      💡 Your selected deck will be used. The AI will analyse your deck and build a counter based on difficulty — Easy plays randomly, Medium builds a partial counter, Hard builds a deck specifically designed to beat yours.
     </div>
     <button class="btn-gold" id="ai-start-btn" onclick="startAIGame()">⚔ Start Game</button>
     <div id="ai-setup-status" style="font-size:12px;color:var(--muted);text-align:center;min-height:20px"></div>
