@@ -219,7 +219,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v5.6</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v5.7</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="editUsername()">✎ Name</button>
@@ -324,6 +324,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div style="display:flex;gap:8px">
       <input class="inp" id="search-inp-builder" placeholder="Search cards..." style="flex:1" onkeydown="if(event.key==='Enter')searchCards('builder-results','builder')">
       <button class="btn-ask" onclick="searchCards('builder-results','builder')">Search</button>
+      <button class="btn-ask" style="border-color:#3a3018;color:var(--muted)" onclick="showCollectionInBuilder()">My Collection</button>
     </div>
     <div class="builder-cols">
       <div class="builder-left"><div class="zone-label">Results — tap to zoom and add</div><div class="results-grid" id="builder-results"></div></div>
@@ -971,6 +972,20 @@ function renderBuilderList() {
 }
 window.newDeck = () => { editingDeckIdx=-1; buildingDeck=[]; showScreen('deckbuilder'); document.getElementById('deck-name-inp').value=''; document.getElementById('deck-format-sel').value='standard'; document.getElementById('builder-results').innerHTML=''; renderBuilderList(); };
 window.editDeck = i => { editingDeckIdx=i; buildingDeck=[...(currentProfile.decks[i].cards||[])]; showScreen('deckbuilder'); document.getElementById('deck-name-inp').value=currentProfile.decks[i].name; document.getElementById('deck-format-sel').value=currentProfile.decks[i].format||'standard'; renderBuilderList(); };
+window.showCollectionInBuilder = () => {
+  const el = document.getElementById('builder-results');
+  el.innerHTML = '';
+  const coll = currentProfile.collection || [];
+  if (!coll.length) { el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px">No saved cards yet. Search and save cards to your collection first.</div>'; return; }
+  coll.forEach(card => {
+    const url = imgUrl(card); if (!url) return;
+    const wrap = document.createElement('div'); wrap.className = 'result-wrap';
+    wrap.innerHTML = `<img src="${url}" class="result-card" loading="lazy">`;
+    wrap.querySelector('img').onclick = () => showCardZoom(card, 'builder', coll, coll.indexOf(card));
+    el.appendChild(wrap);
+  });
+};
+
 window.saveDeck = async () => {
   const name = document.getElementById('deck-name-inp').value.trim() || 'My Deck';
   const format = document.getElementById('deck-format-sel').value;
@@ -1077,175 +1092,143 @@ window.buildAIDeck = async () => {
   const format = document.getElementById('ai-deck-format').value;
   if (!prompt) return toast('Describe your deck first!', true);
   const el = document.getElementById('ai-deck-result');
+  el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">Building deck from Scryfall...</div>';
   document.getElementById('ai-build-btn').disabled = true;
   const cardCount = format === 'commander' ? 100 : 60;
-
-  el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">🤖 Asking AI to build your deck...</div>';
+  const landCount = Math.floor(cardCount * 0.4);
+  const spellCount = cardCount - landCount;
 
   try {
-    // Step 1: Ask Claude to generate a card list
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: `Build a Magic: The Gathering ${format} deck (${cardCount} cards) based on this request: "${prompt}".
-Return ONLY a card list in this exact format, nothing else:
-4x Card Name
-4x Another Card
-2x Third Card
-...
+    const p = prompt.toLowerCase();
 
-Rules:
-- Include ${Math.floor(cardCount * 0.38)} basic lands appropriate for the deck's colours
-- Make sure ANY specific cards mentioned in the request are included
-- Total must equal exactly ${cardCount} cards
-- Use real MTG card names only
-- No explanations, no headers, just the list`
-        }]
-      })
-    });
-    const aiData = await aiRes.json();
-    const cardListText = aiData.content?.[0]?.text || '';
-    if (!cardListText) throw new Error('AI returned no card list');
-
-    // Step 2: Parse the list
-    const lines = cardListText.split('\n').map(l => l.trim()).filter(Boolean);
-    const parsed = [];
-    for (const line of lines) {
-      const m = line.match(/^(\d+)[x\s]+(.+)$/i);
-      if (m) parsed.push({ count: parseInt(m[1]), name: m[2].trim().replace(/\s*\/\/.*$/, '').trim() });
-    }
-    if (!parsed.length) throw new Error('Could not parse AI card list');
-
-    el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">🔍 Fetching cards from Scryfall (0/' + parsed.length + ')...</div>';
-
-    // Step 3: Fetch each card from Scryfall
-    const cards = [];
-    let fetched = 0;
-    for (const { count, name } of parsed) {
-      try {
-        const res = await fetch('https://api.scryfall.com/cards/named?fuzzy=' + encodeURIComponent(name));
-        if (res.ok) {
-          const card = await res.json();
-          for (let i = 0; i < count; i++) cards.push({ ...card, instanceId: Math.random().toString(36).slice(2) });
-        } else {
-          for (let i = 0; i < count; i++) cards.push({ name, id: name + i });
-        }
-      } catch {
-        for (let i = 0; i < count; i++) cards.push({ name, id: name + i });
+    // Step 1: Try to find a named card as the centerpiece
+    let anchorCard = null;
+    let anchorQuery = '';
+    try {
+      const anchorR = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(prompt)}`);
+      if (anchorR.ok) {
+        anchorCard = await anchorR.json();
+        el.innerHTML = `<div style="color:var(--muted);font-style:italic;font-size:13px">Found ${anchorCard.name}! Building around it...</div>`;
       }
-      fetched++;
-      if (fetched % 5 === 0) el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">🔍 Fetching from Scryfall (' + fetched + '/' + parsed.length + ')...</div>';
-      await new Promise(r => setTimeout(r, 110));
+    } catch {}
+
+    // Step 2: Determine colours
+    let colours = [];
+    if (anchorCard && anchorCard.colors && anchorCard.colors.length > 0) {
+      colours = anchorCard.colors;
+    } else {
+      if (p.includes('white')) colours.push('W');
+      if (p.includes('blue')) colours.push('U');
+      if (p.includes('black')) colours.push('B');
+      if (p.includes('red')) colours.push('R');
+      if (p.includes('green')) colours.push('G');
+      if (colours.length === 0) colours = ['B']; // default black
+    }
+    const colourStr = colours.join('');
+
+    // Step 3: Build type query
+    let typeHint = 'type:creature';
+    if (anchorCard) {
+      const anchorType = anchorCard.type_line || '';
+      if (anchorType.includes('Vampire')) typeHint = 'type:vampire';
+      else if (anchorType.includes('Zombie')) typeHint = 'type:zombie';
+      else if (anchorType.includes('Dragon')) typeHint = 'type:dragon';
+      else if (anchorType.includes('Goblin')) typeHint = 'type:goblin';
+      else if (anchorType.includes('Elf')) typeHint = 'type:elf';
+      else if (anchorType.includes('Wizard')) typeHint = 'type:wizard';
+      else if (anchorType.includes('Knight')) typeHint = 'type:knight';
+    } else {
+      if (p.includes('vampire')) typeHint = 'type:vampire';
+      else if (p.includes('zombie')) typeHint = 'type:zombie';
+      else if (p.includes('dragon')) typeHint = 'type:dragon';
+      else if (p.includes('goblin')) typeHint = 'type:goblin';
+      else if (p.includes('elf') || p.includes('elves')) typeHint = 'type:elf';
+      else if (p.includes('control')) typeHint = 'keyword:counter';
+      else if (p.includes('burn')) typeHint = 'o:damage';
     }
 
-    // Step 4: Render result
-    const deckName = prompt.slice(0, 40) + ' Deck';
+    // Step 4: Fetch spells
+    const colourQuery = colours.length === 1 ? `color=${colours[0]}` : `color<=${colourStr}`;
+    const spellQ = `${colourQuery} ${typeHint} cmc<=6 -type:land`;
+    el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">Fetching cards...</div>';
+    const sr = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(spellQ)}&order=edhrec&unique=cards`);
+    if (!sr.ok) throw new Error('Scryfall search failed: ' + sr.status);
+    const sd = await sr.json();
+    const spellPool = (sd.data || []).filter(c => imgUrl(c)).slice(0, 60);
+
+    if (spellPool.length === 0) throw new Error('No cards found for that description. Try different colours or type.');
+
+    // Step 5: Fetch lands
+    const landNameMap = {W:'Plains',U:'Island',B:'Swamp',R:'Mountain',G:'Forest'};
+    const landPool = [];
+    for (const col of colours) {
+      const ln = landNameMap[col];
+      if (!ln) continue;
+      try {
+        const lr = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(ln)}`);
+        if (lr.ok) landPool.push(await lr.json());
+      } catch {}
+    }
+    if (landPool.length === 0) {
+      const lr = await fetch('https://api.scryfall.com/cards/named?exact=Swamp');
+      if (lr.ok) landPool.push(await lr.json());
+    }
+
+    // Step 6: Assemble deck
+    const cards = [];
+    // Add anchor card first (4 copies or 1 for commander)
+    if (anchorCard) {
+      const copies = format === 'commander' ? 1 : Math.min(4, spellCount);
+      for (let i = 0; i < copies; i++) cards.push({...anchorCard, instanceId: uid()});
+    }
+    // Fill lands
+    const perLand = Math.floor(landCount / Math.max(landPool.length, 1));
+    landPool.forEach(land => { for (let i = 0; i < perLand; i++) cards.push({...land, instanceId: uid()}); });
+    while (cards.length < landCount && landPool.length > 0) cards.push({...landPool[0], instanceId: uid()});
+    // Fill spells
+    const maxCopies = format === 'commander' ? 1 : 4;
+    const used = {};
+    for (const card of spellPool) {
+      if (cards.length >= cardCount) break;
+      if (anchorCard && card.id === anchorCard.id) continue; // already added
+      if (!used[card.name]) used[card.name] = 0;
+      while (used[card.name] < maxCopies && cards.length < cardCount) {
+        cards.push({...card, instanceId: uid()});
+        used[card.name]++;
+      }
+    }
+    // Top up if short
+    let si = 0;
+    while (cards.length < cardCount && spellPool.length > 0) { cards.push({...spellPool[si % spellPool.length], instanceId: uid()}); si++; }
+
+    const deckName = anchorCard ? anchorCard.name + ' Deck' : prompt.slice(0, 30) + ' Deck';
     const groups = {};
-    cards.forEach(c => { if (!groups[c.name]) groups[c.name] = { card: c, count: 0 }; groups[c.name].count++; });
+    cards.forEach(c => { if (!groups[c.name]) groups[c.name] = {card: c, count: 0}; groups[c.name].count++; });
 
     el.innerHTML = `<div class="ai-result-box">
-      <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold);margin-bottom:6px">${deckName}</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${cards.length} cards</div>
-      <div id="ai-card-list" style="display:flex;flex-direction:column;gap:3px;margin-bottom:12px"></div>
-      <div style="display:flex;gap:8px;margin-top:4px">
-        <button class="btn-gold" style="flex:1" onclick="saveAIDeck()">Save This Deck</button>
-        <button class="btn-ask" onclick="clearAIDeck()">✕ Clear</button>
-        <button class="btn-ask" onclick="rebuildAIDeck()">↺ Redo</button>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        ${anchorCard && imgUrl(anchorCard) ? `<img src="${imgUrl(anchorCard)}" style="width:60px;height:84px;border-radius:6px">` : ''}
+        <div>
+          <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold)">${deckName}</div>
+          <div style="font-size:12px;color:var(--muted)">${cards.length} cards · ${format === 'commander' ? 'Commander' : 'Standard'} · ${colours.join('')}</div>
+        </div>
       </div>
+      <div id="ai-card-list" style="display:flex;flex-direction:column;gap:3px;margin-bottom:12px"></div>
+      <button class="btn-gold" onclick="saveAIDeck()">Save This Deck</button>
     </div>`;
     Object.values(groups).forEach(g => {
       const d = document.createElement('div'); d.className = 'deck-item';
       d.innerHTML = `<span style="flex:1;font-size:12px">${g.count}x ${g.card.name}</span>`;
       document.getElementById('ai-card-list').appendChild(d);
     });
-    window._aiDeckCards = cards; window._aiDeckName = deckName; window._aiDeckFormat = format;
-    window._aiDeckPrompt = prompt;
+    window._aiDeckCards = cards;
+    window._aiDeckName = deckName;
+    window._aiDeckFormat = format;
   } catch(e) {
     el.innerHTML = `<div style="color:var(--red);font-size:13px">Failed: ${e.message}</div>`;
   }
   document.getElementById('ai-build-btn').disabled = false;
 };
-
-window.clearAIDeck = () => {
-  window._aiDeckCards = null; window._aiDeckName = null; window._aiDeckFormat = null; window._aiDeckPrompt = null;
-  document.getElementById('ai-deck-result').innerHTML = '';
-  document.getElementById('ai-deck-prompt').value = '';
-};
-
-window.rebuildAIDeck = () => {
-  // Keep the same prompt and just rebuild
-  buildAIDeck();
-};
-
-
-window.importDeckList = async () => {
-  const name = document.getElementById('import-deck-name').value.trim() || 'Imported Deck';
-  const raw = document.getElementById('import-deck-list').value.trim();
-  const resultEl = document.getElementById('import-result');
-  if (!raw) { resultEl.textContent = 'Paste a deck list first.'; return; }
-
-  // Parse lines like "4x Blood Artist" or "4 Blood Artist"
-  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
-  const parsed = []; // { count, name }
-  for (const line of lines) {
-    if (/^(sideboard|commander|lands?|creatures?|spells?|artifacts?|enchantments?|planeswalkers?|instants?|sorceries|mainboard)$/i.test(line)) continue;
-    const m = line.match(/^(\d+)[x\s]+(.+)$/i) || line.match(/^(.+)\s+x(\d+)$/i);
-    if (m) {
-      const count = parseInt(m[1]) || parseInt(m[2]);
-      const cardName = (m[2] || m[1]).trim().replace(/\s*\/\/.*$/, '').trim();
-      parsed.push({ count, name: cardName });
-    } else if (/^[A-Z]/.test(line)) {
-      parsed.push({ count: 1, name: line.trim() });
-    }
-  }
-
-  if (!parsed.length) { resultEl.textContent = 'Could not parse any cards. Check the format.'; return; }
-
-  resultEl.innerHTML = '<span style="color:var(--muted)">Fetching cards from Scryfall… (0/' + parsed.length + ')</span>';
-
-  const cards = [];
-  let fetched = 0;
-  let failed = [];
-
-  for (const { count, name } of parsed) {
-    try {
-      const res = await fetch('https://api.scryfall.com/cards/named?fuzzy=' + encodeURIComponent(name));
-      if (res.ok) {
-        const card = await res.json();
-        for (let i = 0; i < count; i++) cards.push(card);
-      } else {
-        failed.push(name);
-        // push stub so deck count is right
-        for (let i = 0; i < count; i++) cards.push({ name, id: name.toLowerCase().replace(/[^a-z0-9]/g,'_') + '_' + i });
-      }
-    } catch {
-      failed.push(name);
-      for (let i = 0; i < count; i++) cards.push({ name, id: name.toLowerCase().replace(/[^a-z0-9]/g,'_') + '_' + i });
-    }
-    fetched++;
-    resultEl.innerHTML = '<span style="color:var(--muted)">Fetching from Scryfall… (' + fetched + '/' + parsed.length + ')</span>';
-    // Scryfall rate limit: max 10 req/s
-    await new Promise(r => setTimeout(r, 110));
-  }
-
-  const deckObj = { name, format: 'imported', cards, importedAt: Date.now() };
-  if (!currentProfile.decks) currentProfile.decks = [];
-  currentProfile.decks.push(deckObj);
-  await saveProfile();
-
-  document.getElementById('import-deck-name').value = '';
-  document.getElementById('import-deck-list').value = '';
-  const failMsg = failed.length ? ` (${failed.length} not found: ${failed.slice(0,3).join(', ')}${failed.length>3?'…':''})` : '';
-  resultEl.innerHTML = '<span style="color:var(--green)">✓ Saved "' + name + '" — ' + cards.length + ' cards' + failMsg + '</span>';
-  toast('"' + name + '" imported! (' + cards.length + ' cards)');
-  setTimeout(() => { showScreen('library'); showLibTab('decks'); }, 1500);
-};
-
 
 window.saveAIDeck = async () => {
   const cards=window._aiDeckCards; const name=window._aiDeckName||'AI Deck'; const format=window._aiDeckFormat||'standard';
