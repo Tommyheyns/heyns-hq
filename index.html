@@ -295,7 +295,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v6.0</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v6.2</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="editUsername()">✎ Name</button>
@@ -452,6 +452,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <button class="icon-btn" onclick="leaveRoom()">Leave</button>
     </div>
   </div>
+  <div id="rules-violation-banner" style="display:none;background:#1a1a2a;border-bottom:2px solid #5a5ae0;padding:10px 14px;align-items:center;gap:10px;flex-shrink:0;">
+    <span style="font-size:20px">⚖</span>
+    <span style="font-size:12px;color:#9090e0;flex:1;line-height:1.4" id="rules-violation-msg"></span>
+    <button onclick="document.getElementById('rules-violation-banner').style.display='none'" style="background:none;border:none;color:#5a5ae0;font-size:18px;cursor:pointer">✕</button>
+  </div>
   <div id="end-game-banner" style="display:none;background:#2a0808;border-bottom:1px solid #5a1a1a;padding:10px 14px;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px;">
     <span style="font-size:12px;color:var(--red)" id="end-game-msg"></span>
     <button class="btn-sm danger" onclick="requestEndGame()">Confirm End</button>
@@ -556,6 +561,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div id="ai-setup-status" style="font-size:12px;color:var(--muted);text-align:center;min-height:20px"></div>
   </div>
   <div id="ai-table-game" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+    <div id="ai-rules-violation-banner" style="display:none;background:#1a1a2a;border-bottom:2px solid #5a5ae0;padding:8px 12px;align-items:center;gap:8px;flex-shrink:0;">
+      <span style="font-size:16px">⚖</span>
+      <span style="font-size:12px;color:#9090e0;flex:1;line-height:1.4" id="ai-rules-violation-msg"></span>
+      <button onclick="document.getElementById('ai-rules-violation-banner').style.display='none'" style="background:none;border:none;color:#5a5ae0;font-size:16px;cursor:pointer">✕</button>
+    </div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border2);background:var(--bg2);flex-shrink:0">
       <div style="font-family:'Cinzel',serif;font-size:11px;color:#b07ae0" id="ai-deck-label">AI</div>
       <div style="font-family:'Cinzel',serif;font-size:12px;padding:3px 10px;border-radius:6px;border:1px solid var(--border2)" id="ai-turn-indicator">Your Turn</div>
@@ -852,6 +862,89 @@ window.confirmWelcome = () => {
 
 function saveProfileLocal() {
   localStorage.setItem('heyns_profile', JSON.stringify(currentProfile));
+}
+
+// ── Rules Checker ────────────────────────────────────────────────────────────
+function rulesCheck(action, card, gameState) {
+  // Returns {ok: bool, msg: string}
+  const warnings = [];
+
+  if (action === 'attack') {
+    if (card.tapped) return {ok:false, msg:`${card.name} is already tapped and cannot attack.`};
+    if (card.summoningSick) return {ok:false, msg:`${card.name} has summoning sickness — it just entered the battlefield and cannot attack yet.`};
+    const power = (parseInt(card.power) || 0) + (card.counters || 0);
+    if (power <= 0 && !card.oracle_text?.includes('can attack')) 
+      warnings.push(`${card.name} has 0 power — it will deal no damage.`);
+    if (!(card.type_line||'').toLowerCase().includes('creature'))
+      return {ok:false, msg:`Only creatures can attack. ${card.name} is not a creature.`};
+  }
+
+  if (action === 'tap') {
+    if (card.tapped) return {ok:false, msg:`${card.name} is already tapped.`};
+  }
+
+  if (action === 'playLand') {
+    if (gameState && gameState.playerLandsPlayed >= 1)
+      return {ok:false, msg:`You can only play one land per turn. You have already played a land this turn.`};
+  }
+
+  if (action === 'playSpell') {
+    if (!(card.type_line||'').toLowerCase().includes('land')) {
+      const cmc = card.cmc || 0;
+      if (gameState && cmc > 0) {
+        const mana = (gameState.playerBattlefield || [])
+          .filter(c => (c.type_line||'').toLowerCase().includes('land') && !c.tapped).length;
+        if (mana < cmc)
+          return {ok:false, msg:`Not enough mana! ${card.name} costs ${cmc} but you only have ${mana} untapped land${mana!==1?'s':''}.`};
+      }
+    }
+  }
+
+  if (action === 'block') {
+    if (card.tapped) return {ok:false, msg:`${card.name} is tapped and cannot block.`};
+    if (!(card.type_line||'').toLowerCase().includes('creature'))
+      return {ok:false, msg:`Only creatures can block.`};
+  }
+
+  return {ok: true, msg: warnings.length ? warnings.join(' ') : ''};
+}
+
+function confirmRulesCheck(action, card, gameState, onConfirm) {
+  const check = rulesCheck(action, card, gameState);
+  if (!check.ok) {
+    // Hard stop - show rules violation
+    showRulesViolation(check.msg);
+    return false;
+  }
+  if (check.msg) {
+    // Warning - ask to confirm
+    if (confirm('⚠ Rules warning:\n\n' + check.msg + '\n\nProceed anyway?')) {
+      onConfirm();
+    }
+    return false;
+  }
+  onConfirm();
+  return true;
+}
+
+function showRulesViolation(msg) {
+  // Try AI table banner first, then room banner, then toast
+  const aiEl = document.getElementById('ai-rules-violation-banner');
+  const roomEl = document.getElementById('rules-violation-banner');
+  const activeScreen = document.querySelector('.screen.active');
+  const screenId = activeScreen ? activeScreen.id : '';
+  
+  if (screenId === 'screen-aitable' && aiEl) {
+    document.getElementById('ai-rules-violation-msg').textContent = msg;
+    aiEl.style.display = 'flex';
+    setTimeout(() => { aiEl.style.display = 'none'; }, 5000);
+  } else if (roomEl) {
+    document.getElementById('rules-violation-msg').textContent = msg;
+    roomEl.style.display = 'flex';
+    setTimeout(() => { roomEl.style.display = 'none'; }, 5000);
+  } else {
+    toast('⚖ ' + msg, true);
+  }
 }
 
 async function saveProfile() {
@@ -1768,18 +1861,27 @@ function renderAIGame(){
         const isLand=card.type_line&&card.type_line.toLowerCase().includes('land');
         previewCardWithActions(url||null,[
           {label:isLand?'Play Land to Battlefield':'Play to Battlefield',fn:()=>{
-            if(isLand){
-              if(aiGame.playerLandsPlayed>=1){toast('Already played a land this turn!',true);return;}
-              aiGame.playerHand.splice(i,1);
-              aiGame.playerBattlefield.push({...card,tapped:false,instanceId:uid()});
-              aiGame.playerLandsPlayed++;
-              aiGame.log.push('You played land: '+card.name);
-            } else {
-              aiGame.playerHand.splice(i,1);
-              aiGame.playerBattlefield.push({...card,tapped:false,instanceId:uid()});
-              aiGame.log.push('You played: '+card.name);
-            }
-            renderAIGame();
+            const action = isLand ? 'playLand' : 'playSpell';
+            confirmRulesCheck(action, card, aiGame, ()=>{
+              if(isLand){
+                aiGame.playerHand.splice(i,1);
+                aiGame.playerBattlefield.push({...card,tapped:false,instanceId:uid()});
+                aiGame.playerLandsPlayed++;
+                aiGame.log.push('You played land: '+card.name);
+              } else {
+                // Tap lands for mana cost
+                const cost = card.cmc || 0;
+                let tapped = 0;
+                aiGame.playerBattlefield = aiGame.playerBattlefield.map(c=>{
+                  if(tapped<cost&&(c.type_line||'').toLowerCase().includes('land')&&!c.tapped){tapped++;return{...c,tapped:true};}
+                  return c;
+                });
+                aiGame.playerHand.splice(i,1);
+                aiGame.playerBattlefield.push({...card,tapped:false,summoningSick:true,instanceId:uid()});
+                aiGame.log.push('You played: '+card.name+(cost>0?' (cost '+cost+')':''));
+              }
+              renderAIGame();
+            });
           }},
           {label:'Discard',fn:()=>{aiGame.playerHand.splice(i,1);aiGame.playerGraveyard.push(card);aiGame.log.push('Discarded: '+card.name);renderAIGame();}},
           {label:'Back',fn:()=>{}},
@@ -1827,7 +1929,7 @@ window.aiDrawCard=()=>{
   const card=aiGame.playerLibrary.shift();aiGame.playerHand.push(card);
   aiGame.log.push('You drew: '+card.name);renderAIGame();
 };
-window.aiUntapAll=()=>{if(!aiGame)return;if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}aiGame.playerBattlefield=aiGame.playerBattlefield.map(c=>({...c,tapped:false}));aiGame.log.push('You untapped all');renderAIGame();};
+window.aiUntapAll=()=>{if(!aiGame)return;if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}aiGame.playerBattlefield=aiGame.playerBattlefield.map(c=>({...c,tapped:false,summoningSick:false}));aiGame.log.push('You untapped all');renderAIGame();};
 window.aiEndTurn=async()=>{
   if(!aiGame)return;if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}
   aiGame.log.push('--- Your turn ended ---');aiGame.turn='ai';aiGame.playerLandsPlayed=0;renderAIGame();
@@ -2368,7 +2470,19 @@ function renderDraftPick() {
     img.className = 'result-card';
     img.loading = 'lazy';
     img.style.cssText = 'width:100px;height:140px;border-radius:6px;cursor:pointer;box-shadow:0 2px 8px #0008;';
-    img.onclick = () => pickDraftCard(i);
+    img.onclick = () => {
+      previewCardWithActions(imgUrl(card), [
+        {label:'✓ Pick This Card', fn:()=>pickDraftCard(i)},
+        {label:'★ Save to Collection', fn:()=>{
+          if(!currentProfile.collection) currentProfile.collection=[];
+          if(!currentProfile.collection.find(c=>c.id===card.id)){
+            currentProfile.collection.push({id:card.id,name:card.name,image_uris:card.image_uris,card_faces:card.card_faces,oracle_text:card.oracle_text,type_line:card.type_line,power:card.power,toughness:card.toughness,colors:card.colors,cmc:card.cmc});
+            saveProfile();toast(card.name+' saved to collection!');
+          } else { toast('Already in collection'); }
+        }},
+        {label:'Back — keep browsing', fn:()=>{}},
+      ], card);
+    };
     wrap.appendChild(img);
     grid.appendChild(wrap);
   });
