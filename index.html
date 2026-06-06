@@ -1410,36 +1410,7 @@ function toast(msg,err){
   t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);
 }
 
-// Always dismiss intro after 3 seconds no matter what
-setTimeout(()=>{
-  try{
-    const i=document.getElementById('intro');
-    if(i){
-      i.style.transition='opacity 0.7s';
-      i.style.opacity='0';
-      i.style.pointerEvents='none';
-      setTimeout(()=>{try{i.remove();}catch{}},800);
-    }
-  }catch{}
-},3000);
-
-// Show auth screen
 try{ window.showAuthTab('login'); }catch{}
-
-// If Firebase fails, still show auth screen after delay
-setTimeout(()=>{
-  try{
-    if(!currentUser){
-      const screens=document.querySelectorAll('.screen');
-      let anyActive=false;
-      screens.forEach(s=>{if(s.classList.contains('active'))anyActive=true;});
-      if(!anyActive){
-        const auth=document.getElementById('screen-auth');
-        if(auth)auth.classList.add('active');
-      }
-    }
-  }catch{}
-},3500);
 
 // ── AI Practice Table ─────────────────────────────────────────────────────────
 let aiGame = null;
@@ -1774,11 +1745,53 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 </head>
 <body>
 <div id="intro"><div class="rune">🜲</div><div class="brand">HEYNS HQ</div><div class="tagline">The Gathering Table</div></div>
+<script>
+// Inline non-module script - runs immediately, no Firebase dependency
+window.addEventListener('load', function() {
+  setTimeout(function() {
+    var intro = document.getElementById('intro');
+    if (intro) {
+      intro.style.opacity = '0';
+      intro.style.transition = 'opacity 0.5s';
+      setTimeout(function() {
+        intro.style.display = 'none';
+      }, 600);
+    }
+    // Make sure auth screen shows
+    var auth = document.getElementById('screen-auth');
+    if (auth && !document.querySelector('.screen.active')) {
+      auth.style.display = 'flex';
+      auth.classList.add('active');
+    }
+  }, 2500);
+});
+</script>
 
 
 </head>
 <body>
 <div id="intro"><div class="rune">🜲</div><div class="brand">HEYNS HQ</div><div class="tagline">The Gathering Table</div></div>
+<script>
+// Inline non-module script - runs immediately, no Firebase dependency
+window.addEventListener('load', function() {
+  setTimeout(function() {
+    var intro = document.getElementById('intro');
+    if (intro) {
+      intro.style.opacity = '0';
+      intro.style.transition = 'opacity 0.5s';
+      setTimeout(function() {
+        intro.style.display = 'none';
+      }, 600);
+    }
+    // Make sure auth screen shows
+    var auth = document.getElementById('screen-auth');
+    if (auth && !document.querySelector('.screen.active')) {
+      auth.style.display = 'flex';
+      auth.classList.add('active');
+    }
+  }, 2500);
+});
+</script>
 
 <!-- AUTH -->
 <div class="screen" id="screen-auth">
@@ -1805,7 +1818,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.0</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.1</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="doLogout()">Sign Out</button>
@@ -1824,7 +1837,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- LIBRARY -->
 <div class="screen" id="screen-library">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.0</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.1</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="lib-tabs">
     <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">🔍 Search</div>
     <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">📚 Collection</div>
@@ -1882,7 +1895,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- DECK BUILDER -->
 <div class="screen" id="screen-deckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.0</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.1</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
     <input class="inp" id="deck-name-inp" placeholder="Deck name…" style="flex:1">
     <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
@@ -1912,7 +1925,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- AI DECK BUILDER -->
 <div class="screen" id="screen-aideckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.0</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.1</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">🤖 AI Deck Builder</div>
     <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
@@ -1930,7 +1943,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- ROOMS -->
 <div class="screen" id="screen-rooms">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.0</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.1</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
     <div class="rooms-grid" id="rooms-grid"></div>
@@ -2025,7 +2038,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 <!-- DRAFT ROOM -->
 <div class="screen" id="screen-draftroom">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.0</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.1</span></div>
     <div style="display:flex;gap:6px"><button class="icon-btn" onclick="goHome()">🏠</button><button class="icon-btn" onclick="leaveDraftRoom()">Leave</button></div>
   </div>
   <div style="padding:8px 14px;border-bottom:1px solid var(--border2);flex-shrink:0">
@@ -2099,7 +2112,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- WHO'S PLAYING -->
 <div class="screen" id="screen-whoplaying">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.0</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.1</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
     <div id="who-list"></div>
@@ -2198,7 +2211,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 <!-- AI PRACTICE TABLE -->
 <div class="screen" id="screen-aitable">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v3.0</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v3.1</span></div>
     <button class="icon-btn" onclick="goHome()">🏠 Home</button>
   </div>
   <!-- Setup -->
