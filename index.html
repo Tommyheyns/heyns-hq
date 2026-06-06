@@ -181,6 +181,82 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 </head>
 <body>
 
+<!-- SCOREBOARD -->
+<div class="screen" id="screen-scoreboard">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">Home</button></div>
+  <div class="screen-body">
+    <div style="font-family:'Cinzel',serif;font-size:18px;color:var(--gold);letter-spacing:3px;text-align:center">🏆 SCOREBOARD</div>
+    <div style="font-size:12px;color:var(--muted);text-align:center">Tap "I Won!" in any game to record your victory</div>
+    <div id="scoreboard-list"></div>
+    <button class="btn-gold" onclick="loadScoreboard()" style="border-color:var(--border2);color:var(--muted)">↺ Refresh</button>
+    <button class="btn-gold" onclick="clearScoreboard()" style="border-color:#5a1a1a;color:var(--red);margin-top:4px">Clear All Scores</button>
+  </div>
+</div>
+
+<!-- DRAFT NIGHT -->
+<div class="screen" id="screen-draft">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">Home</button></div>
+
+  <!-- Setup -->
+  <div id="draft-setup" style="display:flex;flex-direction:column;gap:12px;padding:16px;overflow-y:auto;flex:1">
+    <div style="font-family:'Cinzel',serif;font-size:18px;color:#7a8ae0;letter-spacing:2px">🎴 Draft Night</div>
+    <div style="font-size:13px;color:var(--muted);line-height:1.6">Open booster packs from random MTG sets, pick cards one at a time and build your deck. Packs are pulled live from Scryfall.</div>
+    <div>
+      <div class="zone-label">Number of Players</div>
+      <select class="inp" id="draft-player-count">
+        <option value="2">2 Players</option>
+        <option value="3">3 Players</option>
+        <option value="4">4 Players</option>
+      </select>
+    </div>
+    <div>
+      <div class="zone-label">Packs Each</div>
+      <select class="inp" id="draft-packs-each">
+        <option value="3" selected>3 Packs (standard draft)</option>
+        <option value="2">2 Packs (quick draft)</option>
+        <option value="4">4 Packs (long draft)</option>
+      </select>
+    </div>
+    <div style="font-size:12px;color:var(--muted);background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px;line-height:1.6">
+      💡 Each pack is 15 random cards from a real MTG set — could be anything from recent Duskmourn to classic Innistrad. Pick 1 card per pack, then pass (simulated). Build your deck at the end.
+    </div>
+    <button class="btn-gold" id="draft-start-btn" onclick="startDraft()" style="border-color:#3a3a7a;color:#7a8ae0">🎴 Open Packs & Start Draft</button>
+    <div id="draft-status" style="font-size:12px;color:var(--muted);text-align:center;min-height:20px"></div>
+  </div>
+
+  <!-- Picking phase -->
+  <div id="draft-picking" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+    <div style="padding:8px 12px;background:var(--bg2);border-bottom:1px solid var(--border2);flex-shrink:0">
+      <div style="font-family:'Cinzel',serif;font-size:12px;color:#7a8ae0" id="draft-pack-label">Pack 1 of 3 · Pick 1</div>
+      <div style="font-size:11px;color:var(--muted)" id="draft-picked-count">0 cards picked</div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:10px">
+      <div class="zone-label">Pick a card from this pack</div>
+      <div class="results-grid" id="draft-pack-grid"></div>
+    </div>
+    <div style="padding:8px;border-top:1px solid var(--border2);background:var(--bg2);flex-shrink:0">
+      <div class="zone-label">Your picks so far</div>
+      <div style="display:flex;gap:4px;overflow-x:auto;padding:4px 0" id="draft-picked-grid"></div>
+    </div>
+  </div>
+
+  <!-- Done phase -->
+  <div id="draft-done" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+    <div style="padding:12px;background:var(--bg2);border-bottom:1px solid var(--border2);flex-shrink:0;text-align:center">
+      <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold)">Draft Complete!</div>
+      <div style="font-size:12px;color:var(--muted)" id="draft-final-count">0 cards drafted</div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:10px">
+      <div class="zone-label">Your drafted cards</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px" id="draft-final-grid"></div>
+    </div>
+    <div style="padding:10px;border-top:1px solid var(--border2);background:var(--bg2);flex-shrink:0;display:flex;gap:8px">
+      <button class="btn-gold" style="flex:1" onclick="saveDraftDeck()">Save as Deck</button>
+      <button class="btn-gold" style="flex:1;border-color:var(--border2);color:var(--muted)" onclick="resetDraftSetup()">Draft Again</button>
+    </div>
+  </div>
+</div>
+
 <!-- COMMUNITY DECKS -->
 <div class="screen" id="screen-community">
   <div class="top-bar">
@@ -219,7 +295,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v5.7</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v6.0</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="editUsername()">✎ Name</button>
@@ -233,6 +309,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <div class="home-card" onclick="goToWhoPlaying()"><div class="home-card-icon">👥</div><div><div class="home-card-title">Who's Playing</div><div class="home-card-desc">See who's online right now</div></div></div>
       <div class="home-card" onclick="goToAITable()" style="border-color:#2a1a3a"><div class="home-card-icon">🤖</div><div><div class="home-card-title" style="color:#b07ae0">AI Practice Table</div><div class="home-card-desc">Play solo against an AI opponent</div></div></div>
       <div class="home-card" onclick="goToCommunity()" style="border-color:#1a2a1a"><div class="home-card-icon">🌐</div><div><div class="home-card-title" style="color:#5ae07a">Community Decks</div><div class="home-card-desc">Browse and borrow decks from other players</div></div></div>
+      <div class="home-card" onclick="goToDraft()" style="border-color:#1a1a3a"><div class="home-card-icon">🎴</div><div><div class="home-card-title" style="color:#7a8ae0">Draft Night</div><div class="home-card-desc">Open packs, pick cards, build and play</div></div></div>
+      <div class="home-card" onclick="goToScoreboard()" style="border-color:#2a1a0a"><div class="home-card-icon">🏆</div><div><div class="home-card-title" style="color:#c8a84b">Scoreboard</div><div class="home-card-desc">Track wins and game history</div></div></div>
     </div>
   </div>
 </div>
@@ -369,6 +447,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div><div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold)" id="room-title">Table 1</div><div style="font-size:10px;color:var(--muted)" id="turn-indicator">Waiting...</div></div>
     <div style="display:flex;gap:6px;align-items:center">
       <div style="font-size:10px;background:var(--bg4);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;color:var(--muted)" id="room-role-badge">Playing</div>
+      <button class="icon-btn" onclick="recordWin();requestEndGame()" style="border-color:#1a5a1a;color:var(--green)">I Won!</button>
       <button class="icon-btn" onclick="requestEndGame()" style="border-color:#5a1a1a;color:var(--red)">End Game</button>
       <button class="icon-btn" onclick="leaveRoom()">Leave</button>
     </div>
@@ -480,6 +559,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border2);background:var(--bg2);flex-shrink:0">
       <div style="font-family:'Cinzel',serif;font-size:11px;color:#b07ae0" id="ai-deck-label">AI</div>
       <div style="font-family:'Cinzel',serif;font-size:12px;padding:3px 10px;border-radius:6px;border:1px solid var(--border2)" id="ai-turn-indicator">Your Turn</div>
+      <button class="icon-btn" onclick="recordWin();resetAITable();" style="border-color:#1a5a1a;color:var(--green)">I Won!</button>
       <button class="icon-btn" onclick="if(confirm('Quit?')){resetAITable();}">Quit</button>
     </div>
     <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:8px;padding-bottom:4px">
@@ -794,7 +874,8 @@ window.goHome = () => {
 };
 window.goToLibrary = () => { showScreen('library'); showLibTab('search'); };
 window.goToRooms = async () => { showScreen('rooms'); await cleanMyRooms(); loadRooms(); };
-window.goToWhoPlaying = () => { showScreen('whoplaying'); loadWhoPlaying(); };
+window.goToWhoPlaying = () => { showScreen('whoplaying');
+window.goToCommunity=()=>{ showScreen('community'); loadCommunityDecks(); }; loadWhoPlaying(); };
 window.goToAITable = () => { showScreen('aitable'); resetAITable(); };
 
 window.editUsername = () => {
@@ -1092,125 +1173,139 @@ window.buildAIDeck = async () => {
   const format = document.getElementById('ai-deck-format').value;
   if (!prompt) return toast('Describe your deck first!', true);
   const el = document.getElementById('ai-deck-result');
-  el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">Building deck from Scryfall...</div>';
+  el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">Searching Scryfall...</div>';
   document.getElementById('ai-build-btn').disabled = true;
   const cardCount = format === 'commander' ? 100 : 60;
   const landCount = Math.floor(cardCount * 0.4);
-  const spellCount = cardCount - landCount;
 
   try {
     const p = prompt.toLowerCase();
 
-    // Step 1: Try to find a named card as the centerpiece
+    // Step 1: Try exact/fuzzy card name first
     let anchorCard = null;
-    let anchorQuery = '';
     try {
-      const anchorR = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(prompt)}`);
-      if (anchorR.ok) {
-        anchorCard = await anchorR.json();
-        el.innerHTML = `<div style="color:var(--muted);font-style:italic;font-size:13px">Found ${anchorCard.name}! Building around it...</div>`;
-      }
+      const r = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(prompt)}`);
+      if (r.ok) { anchorCard = await r.json(); el.innerHTML = `<div style="color:var(--muted);font-size:13px">Found "${anchorCard.name}" — building around it...</div>`; }
     } catch {}
 
-    // Step 2: Determine colours
+    // Step 2: Build the Scryfall search query from the prompt
+    // Extract colour hints
+    const colMap = {white:'W',blue:'U',black:'B',red:'R',green:'G'};
     let colours = [];
-    if (anchorCard && anchorCard.colors && anchorCard.colors.length > 0) {
+    if (anchorCard?.colors?.length) {
       colours = anchorCard.colors;
     } else {
-      if (p.includes('white')) colours.push('W');
-      if (p.includes('blue')) colours.push('U');
-      if (p.includes('black')) colours.push('B');
-      if (p.includes('red')) colours.push('R');
-      if (p.includes('green')) colours.push('G');
-      if (colours.length === 0) colours = ['B']; // default black
+      for (const [word, col] of Object.entries(colMap)) { if (p.includes(word)) colours.push(col); }
+      if (!colours.length) {
+        // Try to infer from keywords
+        if (p.includes('bloodthirst')||p.includes('goblin')||p.includes('burn')||p.includes('aggro')) colours=['R'];
+        else if (p.includes('zombie')||p.includes('vampire')||p.includes('sacrifice')) colours=['B'];
+        else if (p.includes('counter')||p.includes('control')) colours=['U'];
+        else if (p.includes('lifegain')||p.includes('life gain')||p.includes('angel')) colours=['W'];
+        else if (p.includes('elf')||p.includes('ramp')||p.includes('beast')) colours=['G'];
+        else colours=['B'];
+      }
     }
-    const colourStr = colours.join('');
 
-    // Step 3: Build type query
-    let typeHint = 'type:creature';
-    if (anchorCard) {
-      const anchorType = anchorCard.type_line || '';
-      if (anchorType.includes('Vampire')) typeHint = 'type:vampire';
-      else if (anchorType.includes('Zombie')) typeHint = 'type:zombie';
-      else if (anchorType.includes('Dragon')) typeHint = 'type:dragon';
-      else if (anchorType.includes('Goblin')) typeHint = 'type:goblin';
-      else if (anchorType.includes('Elf')) typeHint = 'type:elf';
-      else if (anchorType.includes('Wizard')) typeHint = 'type:wizard';
-      else if (anchorType.includes('Knight')) typeHint = 'type:knight';
+    // Step 3: Build keyword/mechanic query — this is the key fix
+    // Search for the EXACT mechanic/keyword in oracle text
+    let mechanicQuery = '';
+    const keywords = [
+      'bloodthirst','deathtouuh','deathtouch','trample','haste','lifelink','vigilance',
+      'flying','reach','flash','hexproof','indestructible','menace','first strike',
+      'double strike','proliferate','infect','toxic','convoke','delve','madness',
+      'flashback','cycling','kicker','enrage','riot','adapt','mutate','exploit',
+      'sacrifice','tribal','token','counter','burn','aggro','control','ramp',
+      'graveyard','reanimator','mill','combo','voltron'
+    ];
+
+    // Find the most specific keyword in the prompt
+    const foundKeyword = keywords.find(k => p.includes(k));
+
+    if (foundKeyword) {
+      // Search oracle text for the mechanic
+      mechanicQuery = `o:"${foundKeyword}"`;
+    } else if (anchorCard) {
+      // Build around anchor card's type
+      const type = anchorCard.type_line || '';
+      const subtypes = ['Vampire','Zombie','Dragon','Goblin','Elf','Wizard','Knight',
+                        'Soldier','Merfolk','Angel','Demon','Beast','Druid'];
+      const subtype = subtypes.find(t => type.includes(t));
+      if (subtype) mechanicQuery = `type:${subtype.toLowerCase()}`;
+      else mechanicQuery = 'type:creature';
     } else {
-      if (p.includes('vampire')) typeHint = 'type:vampire';
-      else if (p.includes('zombie')) typeHint = 'type:zombie';
-      else if (p.includes('dragon')) typeHint = 'type:dragon';
-      else if (p.includes('goblin')) typeHint = 'type:goblin';
-      else if (p.includes('elf') || p.includes('elves')) typeHint = 'type:elf';
-      else if (p.includes('control')) typeHint = 'keyword:counter';
-      else if (p.includes('burn')) typeHint = 'o:damage';
+      mechanicQuery = 'type:creature';
     }
 
-    // Step 4: Fetch spells
-    const colourQuery = colours.length === 1 ? `color=${colours[0]}` : `color<=${colourStr}`;
-    const spellQ = `${colourQuery} ${typeHint} cmc<=6 -type:land`;
-    el.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:13px">Fetching cards...</div>';
-    const sr = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(spellQ)}&order=edhrec&unique=cards`);
-    if (!sr.ok) throw new Error('Scryfall search failed: ' + sr.status);
-    const sd = await sr.json();
+    // Build colour filter
+    const colStr = colours.join('');
+    const colFilter = colours.length === 1 ? `color=${colours[0]}` : `color<=${colStr}`;
+
+    // Step 4: Fetch cards matching the mechanic
+    const query = `${colFilter} ${mechanicQuery} -type:land`;
+    el.innerHTML = `<div style="color:var(--muted);font-size:13px">Searching for "${mechanicQuery.replace('o:','')}..." </div>`;
+    const sr = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=edhrec&unique=cards`);
+    if (!sr.ok) {
+      // Fallback - remove colour restriction
+      const sr2 = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(mechanicQuery + ' -type:land')}&order=edhrec&unique=cards`);
+      if (!sr2.ok) throw new Error('No cards found for "' + prompt + '". Try being more specific.');
+      var sd = await sr2.json();
+    } else {
+      var sd = await sr.json();
+    }
+
     const spellPool = (sd.data || []).filter(c => imgUrl(c)).slice(0, 60);
+    if (!spellPool.length) throw new Error('No cards found. Try different wording.');
 
-    if (spellPool.length === 0) throw new Error('No cards found for that description. Try different colours or type.');
+    // Infer colours from results if we had none
+    if (!colours.length && spellPool.length) {
+      const colCount = {};
+      spellPool.slice(0,10).forEach(c => (c.colors||[]).forEach(col => colCount[col]=(colCount[col]||0)+1));
+      colours = Object.entries(colCount).sort((a,b)=>b[1]-a[1]).slice(0,2).map(e=>e[0]);
+    }
 
-    // Step 5: Fetch lands
+    // Step 5: Fetch basic lands
     const landNameMap = {W:'Plains',U:'Island',B:'Swamp',R:'Mountain',G:'Forest'};
     const landPool = [];
     for (const col of colours) {
-      const ln = landNameMap[col];
-      if (!ln) continue;
-      try {
-        const lr = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(ln)}`);
-        if (lr.ok) landPool.push(await lr.json());
-      } catch {}
+      const ln = landNameMap[col]; if(!ln) continue;
+      try { const lr = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(ln)}`); if(lr.ok) landPool.push(await lr.json()); } catch {}
     }
-    if (landPool.length === 0) {
-      const lr = await fetch('https://api.scryfall.com/cards/named?exact=Swamp');
-      if (lr.ok) landPool.push(await lr.json());
-    }
+    if (!landPool.length) { try { const lr = await fetch('https://api.scryfall.com/cards/named?exact=Swamp'); if(lr.ok) landPool.push(await lr.json()); } catch {} }
 
     // Step 6: Assemble deck
     const cards = [];
-    // Add anchor card first (4 copies or 1 for commander)
-    if (anchorCard) {
-      const copies = format === 'commander' ? 1 : Math.min(4, spellCount);
+    // Anchor card first
+    if (anchorCard && imgUrl(anchorCard)) {
+      const copies = format === 'commander' ? 1 : 4;
       for (let i = 0; i < copies; i++) cards.push({...anchorCard, instanceId: uid()});
     }
-    // Fill lands
+    // Lands
     const perLand = Math.floor(landCount / Math.max(landPool.length, 1));
     landPool.forEach(land => { for (let i = 0; i < perLand; i++) cards.push({...land, instanceId: uid()}); });
-    while (cards.length < landCount && landPool.length > 0) cards.push({...landPool[0], instanceId: uid()});
-    // Fill spells
+    while (cards.length < landCount && landPool.length) cards.push({...landPool[0], instanceId: uid()});
+    // Spells — max 4 each (1 for commander)
     const maxCopies = format === 'commander' ? 1 : 4;
     const used = {};
     for (const card of spellPool) {
       if (cards.length >= cardCount) break;
-      if (anchorCard && card.id === anchorCard.id) continue; // already added
+      if (anchorCard && card.id === anchorCard.id) continue;
       if (!used[card.name]) used[card.name] = 0;
-      while (used[card.name] < maxCopies && cards.length < cardCount) {
-        cards.push({...card, instanceId: uid()});
-        used[card.name]++;
-      }
+      while (used[card.name] < maxCopies && cards.length < cardCount) { cards.push({...card, instanceId: uid()}); used[card.name]++; }
     }
-    // Top up if short
     let si = 0;
-    while (cards.length < cardCount && spellPool.length > 0) { cards.push({...spellPool[si % spellPool.length], instanceId: uid()}); si++; }
+    while (cards.length < cardCount && spellPool.length) { cards.push({...spellPool[si % spellPool.length], instanceId: uid()}); si++; }
 
-    const deckName = anchorCard ? anchorCard.name + ' Deck' : prompt.slice(0, 30) + ' Deck';
+    const deckName = anchorCard ? anchorCard.name + ' Deck' : prompt.slice(0,30) + ' Deck';
     const groups = {};
     cards.forEach(c => { if (!groups[c.name]) groups[c.name] = {card: c, count: 0}; groups[c.name].count++; });
 
     el.innerHTML = `<div class="ai-result-box">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        ${anchorCard && imgUrl(anchorCard) ? `<img src="${imgUrl(anchorCard)}" style="width:60px;height:84px;border-radius:6px">` : ''}
+        ${anchorCard && imgUrl(anchorCard) ? `<img src="${imgUrl(anchorCard)}" style="width:60px;height:84px;border-radius:6px;flex-shrink:0">` : ''}
         <div>
           <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold)">${deckName}</div>
-          <div style="font-size:12px;color:var(--muted)">${cards.length} cards · ${format === 'commander' ? 'Commander' : 'Standard'} · ${colours.join('')}</div>
+          <div style="font-size:12px;color:var(--muted)">${cards.length} cards · ${format === 'commander' ? 'Commander' : 'Standard'} · Built around: ${foundKeyword || (anchorCard?.name) || prompt}</div>
         </div>
       </div>
       <div id="ai-card-list" style="display:flex;flex-direction:column;gap:3px;margin-bottom:12px"></div>
@@ -2075,6 +2170,283 @@ window.removeCommunityDeck = async (pubId) => {
     toast('Removed from community library');
     loadCommunityDecks();
   } catch(e) { toast('Failed: ' + e.message, true); }
+};
+
+
+const MTG_SETS = [
+  // Recent sets
+  {code:'dsk',name:'Duskmourn'},
+  {code:'blb',name:'Bloomburrow'},
+  {code:'otj',name:'Outlaws of Thunder Junction'},
+  {code:'mkm',name:'Murders at Karlov Manor'},
+  {code:'lci',name:'Lost Caverns of Ixalan'},
+  {code:'woe',name:'Wilds of Eldraine'},
+  {code:'mom',name:'March of the Machine'},
+  {code:'one',name:'Phyrexia: All Will Be One'},
+  {code:'bro',name:'The Brothers War'},
+  {code:'dmr',name:'Dominaria Remastered'},
+  // Mid era
+  {code:'neo',name:'Kamigawa: Neon Dynasty'},
+  {code:'mid',name:'Innistrad: Midnight Hunt'},
+  {code:'afr',name:'Forgotten Realms'},
+  {code:'stx',name:'Strixhaven'},
+  {code:'khm',name:'Kaldheim'},
+  {code:'znr',name:'Zendikar Rising'},
+  {code:'m21',name:'Core Set 2021'},
+  {code:'eld',name:'Throne of Eldraine'},
+  {code:'war',name:'War of the Spark'},
+  {code:'rna',name:'Ravnica Allegiance'},
+  // Classic sets
+  {code:'rix',name:'Rivals of Ixalan'},
+  {code:'xln',name:'Ixalan'},
+  {code:'akh',name:'Amonkhet'},
+  {code:'kld',name:'Kaladesh'},
+  {code:'soi',name:'Shadows over Innistrad'},
+  {code:'bfz',name:'Battle for Zendikar'},
+  {code:'ktk',name:'Khans of Tarkir'},
+  {code:'ths',name:'Theros'},
+  {code:'rtr',name:'Return to Ravnica'},
+  {code:'isd',name:'Innistrad'},
+];
+
+// ── Scoreboard ────────────────────────────────────────────────────────────────
+function getScoreboard() {
+  try { return JSON.parse(localStorage.getItem('heyns_scoreboard') || '{}'); } catch { return {}; }
+}
+function saveScoreboard(sb) {
+  localStorage.setItem('heyns_scoreboard', JSON.stringify(sb));
+}
+window.recordWin = () => {
+  const sb = getScoreboard();
+  const name = currentProfile.username || 'Player';
+  if (!sb[name]) sb[name] = { wins: 0, games: 0 };
+  sb[name].wins++;
+  sb[name].games++;
+  // Record a game for everyone else online too (they played)
+  saveScoreboard(sb);
+  // Also save to Firebase so everyone can see
+  if (db) try { setDoc(doc(db, 'scoreboard', 'global'), sb); } catch {}
+  toast('Win recorded for ' + name + '!');
+  loadScoreboard();
+};
+window.recordLoss = () => {
+  const sb = getScoreboard();
+  const name = currentProfile.username || 'Player';
+  if (!sb[name]) sb[name] = { wins: 0, games: 0 };
+  sb[name].games++;
+  saveScoreboard(sb);
+  if (db) try { setDoc(doc(db, 'scoreboard', 'global'), sb); } catch {}
+  toast('Game recorded.');
+  loadScoreboard();
+};
+async function loadScoreboard() {
+  const el = document.getElementById('scoreboard-list');
+  if (!el) return;
+  el.innerHTML = '';
+  // Try Firebase first for global scores, fall back to local
+  let sb = getScoreboard();
+  if (db) {
+    try {
+      const snap = await getDoc(doc(db, 'scoreboard', 'global'));
+      if (snap.exists()) sb = { ...sb, ...snap.data() };
+    } catch {}
+  }
+  const entries = Object.entries(sb).sort((a, b) => b[1].wins - a[1].wins);
+  if (!entries.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">No games recorded yet. Play a game and tap I Won!</div>';
+    return;
+  }
+  entries.forEach(([name, stats], i) => {
+    const isMe = name === currentProfile.username;
+    const winRate = stats.games > 0 ? Math.round((stats.wins / stats.games) * 100) : 0;
+    const d = document.createElement('div');
+    d.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg3);border:1px solid ' + (isMe ? 'var(--gold-dim)' : 'var(--border2)') + ';border-radius:10px;margin-bottom:8px;';
+    d.innerHTML = `<div style="font-family:'Cinzel',serif;font-size:20px;color:${i===0?'var(--gold)':i===1?'#aaa':i===2?'#cd7f32':'var(--muted)'};width:28px;text-align:center">${i===0?'♛':i===1?'✦':i===2?'◆':i+1}</div>
+      <div style="flex:1">
+        <div style="font-family:'Cinzel',serif;font-size:13px;color:${isMe?'var(--gold)':'var(--text)'}">${name}${isMe?' (you)':''}</div>
+        <div style="font-size:11px;color:var(--muted)">${stats.wins} wins · ${stats.games} games · ${winRate}% win rate</div>
+      </div>
+      <div style="font-family:'Cinzel',serif;font-size:22px;color:var(--gold)">${stats.wins}</div>`;
+    el.appendChild(d);
+  });
+}
+window.goToScoreboard = () => { showScreen('scoreboard'); loadScoreboard(); };
+window.clearScoreboard = () => {
+  if (!confirm('Clear all scores? This cannot be undone.')) return;
+  localStorage.removeItem('heyns_scoreboard');
+  if (db) try { setDoc(doc(db, 'scoreboard', 'global'), {}); } catch {}
+  loadScoreboard();
+};
+
+// ── Draft Night ───────────────────────────────────────────────────────────────
+let draftState = null;
+
+window.goToDraft = () => { showScreen('draft'); resetDraftSetup(); };
+
+window.resetDraftSetup = () => {
+  draftState = null;
+  document.getElementById('draft-setup').style.display = 'flex';
+  document.getElementById('draft-picking').style.display = 'none';
+  document.getElementById('draft-done').style.display = 'none';
+  document.getElementById('draft-status').textContent = '';
+};
+
+window.startDraft = async () => {
+  const playerCount = parseInt(document.getElementById('draft-player-count').value);
+  const packsEach = parseInt(document.getElementById('draft-packs-each').value);
+  const statusEl = document.getElementById('draft-status');
+  document.getElementById('draft-start-btn').disabled = true;
+
+  statusEl.textContent = 'Opening packs from random sets...';
+
+  try {
+    // Pick random sets for each pack
+    const allPacks = []; // allPacks[playerIdx][packIdx] = [15 cards]
+
+    for (let p = 0; p < playerCount; p++) {
+      allPacks.push([]);
+      for (let pk = 0; pk < packsEach; pk++) {
+        const set = MTG_SETS[Math.floor(Math.random() * MTG_SETS.length)];
+        statusEl.textContent = `Fetching ${set.name} pack ${pk+1} for player ${p+1}...`;
+        try {
+          const r = await fetch(`https://api.scryfall.com/cards/search?q=set:${set.code}+is:booster&order=random&page=1`);
+          if (!r.ok) throw new Error();
+          const d = await r.json();
+          const pool = (d.data || []).filter(c => imgUrl(c));
+          // Pick 15 random cards
+          const pack = shuffle(pool).slice(0, 15);
+          allPacks[p].push({ cards: pack, setName: set.name });
+        } catch {
+          // Fallback pack if set fails
+          const r2 = await fetch('https://api.scryfall.com/cards/search?q=is:booster+color=R&order=random');
+          const d2 = await r2.json();
+          allPacks[p].push({ cards: shuffle((d2.data||[]).filter(c=>imgUrl(c))).slice(0,15), setName: 'Mixed' });
+        }
+      }
+    }
+
+    draftState = {
+      playerCount,
+      packsEach,
+      allPacks,
+      currentPack: 0,      // which pack round we're on
+      currentPick: 0,       // pick number within pack
+      myDraft: [],          // cards I've picked
+      playerNames: Array.from({length: playerCount}, (_,i) => i===0 ? (currentProfile.username||'You') : 'Player '+(i+1)),
+    };
+
+    document.getElementById('draft-setup').style.display = 'none';
+    document.getElementById('draft-picking').style.display = 'flex';
+    statusEl.textContent = '';
+    renderDraftPick();
+  } catch(e) {
+    statusEl.textContent = 'Failed: ' + e.message + '. Try again.';
+  }
+  document.getElementById('draft-start-btn').disabled = false;
+};
+
+function renderDraftPick() {
+  if (!draftState) return;
+  const { currentPack, currentPick, allPacks, myDraft, packsEach } = draftState;
+
+  // My current pack
+  const myPack = allPacks[0][currentPack];
+  const remaining = myPack ? myPack.cards : [];
+
+  document.getElementById('draft-pack-label').textContent =
+    `Pack ${currentPack + 1} of ${packsEach} · Pick ${currentPick + 1} · ${remaining.length} cards left`;
+  document.getElementById('draft-picked-count').textContent = myDraft.length + ' cards picked';
+
+  const grid = document.getElementById('draft-pack-grid');
+  grid.innerHTML = '';
+  remaining.forEach((card, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'result-wrap';
+    wrap.style.position = 'relative';
+    const img = document.createElement('img');
+    img.src = imgUrl(card);
+    img.className = 'result-card';
+    img.loading = 'lazy';
+    img.style.cssText = 'width:100px;height:140px;border-radius:6px;cursor:pointer;box-shadow:0 2px 8px #0008;';
+    img.onclick = () => pickDraftCard(i);
+    wrap.appendChild(img);
+    grid.appendChild(wrap);
+  });
+
+  // Show picked cards
+  const pickedGrid = document.getElementById('draft-picked-grid');
+  pickedGrid.innerHTML = '';
+  myDraft.slice(-8).forEach(card => {
+    const img = document.createElement('img');
+    img.src = imgUrl(card);
+    img.style.cssText = 'width:50px;height:70px;border-radius:4px;object-fit:cover;';
+    img.onclick = () => previewCard(imgUrl(card));
+    pickedGrid.appendChild(img);
+  });
+}
+
+window.pickDraftCard = (cardIdx) => {
+  if (!draftState) return;
+  const { allPacks, currentPack, myDraft, playerCount, packsEach } = draftState;
+  const myPack = allPacks[0][currentPack];
+  if (!myPack || !myPack.cards[cardIdx]) return;
+
+  // Pick card
+  const picked = myPack.cards.splice(cardIdx, 1)[0];
+  myDraft.push(picked);
+  draftState.currentPick++;
+
+  // Simulate other players picking (remove a random card from their packs)
+  for (let p = 1; p < playerCount; p++) {
+    const theirPack = allPacks[p][currentPack];
+    if (theirPack && theirPack.cards.length > 0) {
+      theirPack.cards.splice(Math.floor(Math.random() * theirPack.cards.length), 1);
+    }
+  }
+
+  // Check if pack is done (all cards picked or < playerCount cards left)
+  const remaining = myPack.cards.length;
+  if (remaining === 0) {
+    draftState.currentPack++;
+    draftState.currentPick = 0;
+    if (draftState.currentPack >= packsEach) {
+      // Draft done!
+      finishDraft();
+      return;
+    }
+    toast('Pack ' + (draftState.currentPack + 1) + ' — pick your first card!');
+  }
+
+  renderDraftPick();
+};
+
+function finishDraft() {
+  const { myDraft } = draftState;
+  document.getElementById('draft-picking').style.display = 'none';
+  document.getElementById('draft-done').style.display = 'flex';
+  document.getElementById('draft-final-count').textContent = myDraft.length + ' cards drafted';
+
+  // Show drafted cards
+  const grid = document.getElementById('draft-final-grid');
+  grid.innerHTML = '';
+  myDraft.forEach(card => {
+    const img = document.createElement('img');
+    img.src = imgUrl(card);
+    img.style.cssText = 'width:60px;height:84px;border-radius:5px;object-fit:cover;cursor:pointer;';
+    img.onclick = () => previewCard(imgUrl(card));
+    grid.appendChild(img);
+  });
+}
+
+window.saveDraftDeck = async () => {
+  const { myDraft } = draftState;
+  const name = 'Draft Deck - ' + new Date().toLocaleDateString();
+  const deckObj = { name, format: 'standard', cards: myDraft.map(c=>({...c,instanceId:uid()})), aiBuilt: false, savedAt: Date.now() };
+  if (!currentProfile.decks) currentProfile.decks = [];
+  currentProfile.decks.push(deckObj);
+  await saveProfile();
+  toast('"' + name + '" saved!');
+  showScreen('library'); showLibTab('decks');
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────────
