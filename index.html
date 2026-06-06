@@ -178,6 +178,516 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 ::-webkit-scrollbar-track{background:var(--bg2);}
 ::-webkit-scrollbar-thumb{background:var(--gold-dim);border-radius:4px;}
 </style>
+</head>
+<body>
+
+<!-- COMMUNITY DECKS -->
+<div class="screen" id="screen-community">
+  <div class="top-bar">
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div>
+    <button class="icon-btn" onclick="goHome()">Home</button>
+  </div>
+  <div class="screen-body">
+    <div style="font-family:'Cinzel',serif;font-size:16px;color:#5ae07a;letter-spacing:2px">🌐 Community Decks</div>
+    <div style="font-size:13px;color:var(--muted);line-height:1.6">Browse decks shared by other players. Copy any deck to play with — you can't edit the original.</div>
+    <div style="font-size:11px;color:var(--muted);background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px;line-height:1.6">
+      To share your own deck, go to <strong style="color:var(--gold)">Library → Decks</strong> and tap <strong style="color:#5ae07a">Share</strong> next to any deck.
+    </div>
+    <button class="btn-gold" style="border-color:#1a4a1a;color:#5ae07a" onclick="loadCommunityDecks()">↺ Refresh</button>
+    <div id="community-list"></div>
+  </div>
+</div>
+
+<!-- WELCOME (first time only) -->
+<div class="screen active" id="screen-welcome">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:30px;gap:20px;background:radial-gradient(ellipse at 50% 30%,#1a1508,#080705)">
+    <div style="font-size:56px">♛</div>
+    <div style="font-family:'Cinzel',serif;font-size:28px;letter-spacing:8px;color:var(--gold);text-align:center">HEYNS HQ</div>
+    <div style="font-size:12px;letter-spacing:4px;color:var(--muted);text-align:center;text-transform:uppercase">The Gathering Table</div>
+    <div style="width:100%;max-width:320px;background:var(--bg3);border:1px solid var(--border2);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:14px;margin-top:10px">
+      <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold);text-align:center;letter-spacing:2px">WELCOME</div>
+      <div style="font-size:13px;color:var(--muted);text-align:center;line-height:1.6">What should we call you? This name will show when you play at the tables.</div>
+      <div>
+        <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:2px;color:var(--gold);margin-bottom:6px">YOUR NAME</div>
+        <input class="inp" id="welcome-name" placeholder="e.g. Tommy" onkeydown="if(event.key==='Enter')confirmWelcome()" maxlength="20" style="text-align:center;font-size:18px;font-family:'Cinzel',serif">
+      </div>
+      <button class="btn-gold" onclick="confirmWelcome()" style="margin-top:4px">Enter the Table ✦</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOME -->
+<div class="screen" id="screen-home">
+  <div class="top-bar">
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v4.0</span></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
+      <button class="icon-btn" onclick="editUsername()">✎ Name</button>
+    </div>
+  </div>
+  <div class="screen-body">
+    <div class="home-greeting">Welcome back</div>
+    <div class="home-cards">
+      <div class="home-card" onclick="goToLibrary()"><div class="home-card-icon">📚</div><div><div class="home-card-title">Library</div><div class="home-card-desc">Your collection, decks and card search</div></div></div>
+      <div class="home-card" onclick="goToRooms()"><div class="home-card-icon">🏠</div><div><div class="home-card-title">Rooms</div><div class="home-card-desc">Join a table and play</div></div></div>
+      <div class="home-card" onclick="goToWhoPlaying()"><div class="home-card-icon">👥</div><div><div class="home-card-title">Who's Playing</div><div class="home-card-desc">See who's online right now</div></div></div>
+      <div class="home-card" onclick="goToAITable()" style="border-color:#2a1a3a"><div class="home-card-icon">🤖</div><div><div class="home-card-title" style="color:#b07ae0">AI Practice Table</div><div class="home-card-desc">Play solo against an AI opponent</div></div></div>
+      <div class="home-card" onclick="goToCommunity()" style="border-color:#1a2a1a"><div class="home-card-icon">🌐</div><div><div class="home-card-title" style="color:#5ae07a">Community Decks</div><div class="home-card-desc">Browse and borrow decks from other players</div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- LIBRARY -->
+<div class="screen" id="screen-library">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">Home</button></div>
+  <div class="lib-tabs">
+    <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">Search</div>
+    <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">Collection</div>
+    <div class="lib-tab" data-tab="decks" onclick="showLibTab('decks')">Decks</div>
+  </div>
+  <div class="lib-view active" id="lv-search">
+    <div class="zone-label">Colour</div>
+    <div class="filter-row" style="margin-bottom:6px">
+      <button class="color-btn" data-c="W" style="background:#f5f0d0" onclick="toggleColor('W')">☀</button>
+      <button class="color-btn" data-c="U" style="background:#3a6ea8" onclick="toggleColor('U')">💧</button>
+      <button class="color-btn" data-c="B" style="background:#2a2a2a;color:#aaa" onclick="toggleColor('B')">💀</button>
+      <button class="color-btn" data-c="R" style="background:#c84a30" onclick="toggleColor('R')">🔥</button>
+      <button class="color-btn" data-c="G" style="background:#2a6a30" onclick="toggleColor('G')">🌲</button>
+      <button class="color-btn" data-c="C" style="background:#888;color:#fff" onclick="toggleColor('C')">◇</button>
+    </div>
+    <div class="zone-label">Type</div>
+    <div class="filter-row" style="margin-bottom:6px">
+      <button class="type-btn" data-t="creature" onclick="toggleType('creature')">Creature</button>
+      <button class="type-btn" data-t="instant" onclick="toggleType('instant')">Instant</button>
+      <button class="type-btn" data-t="sorcery" onclick="toggleType('sorcery')">Sorcery</button>
+      <button class="type-btn" data-t="enchantment" onclick="toggleType('enchantment')">Enchantment</button>
+      <button class="type-btn" data-t="artifact" onclick="toggleType('artifact')">Artifact</button>
+      <button class="type-btn" data-t="planeswalker" onclick="toggleType('planeswalker')">Planeswalker</button>
+    </div>
+    <div class="zone-label">Mana Cost</div>
+    <div class="filter-row" style="margin-bottom:8px">
+      <button class="cmc-btn" data-cmc="0" onclick="toggleCmc('0')">0</button>
+      <button class="cmc-btn" data-cmc="1" onclick="toggleCmc('1')">1</button>
+      <button class="cmc-btn" data-cmc="2" onclick="toggleCmc('2')">2</button>
+      <button class="cmc-btn" data-cmc="3" onclick="toggleCmc('3')">3</button>
+      <button class="cmc-btn" data-cmc="4" onclick="toggleCmc('4')">4</button>
+      <button class="cmc-btn" data-cmc="5" onclick="toggleCmc('5')">5</button>
+      <button class="cmc-btn" data-cmc=">=6" onclick="toggleCmc('>=6')">6+</button>
+    </div>
+    <div style="display:flex;gap:8px">
+      <input class="inp" id="search-inp-search" placeholder="Card name (optional)..." style="flex:1" onkeydown="if(event.key==='Enter')searchCards('search-results','search')">
+      <button class="btn-ask" onclick="searchCards('search-results','search')">Search</button>
+    </div>
+    <div class="zone-label">Results — tap to zoom, save to collection</div>
+    <div class="results-grid" id="search-results"></div>
+  </div>
+  <div class="lib-view" id="lv-collection">
+    <div style="font-size:11px;color:var(--muted)">Saved Cards (<span id="coll-count">0</span>)</div>
+    <div class="results-grid" id="coll-saved"></div>
+  </div>
+  <div class="lib-view" id="lv-decks">
+    <div style="font-size:11px;color:var(--muted)" id="decks-count">0 decks</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-gold" style="flex:1" onclick="newDeck()">Build Deck</button>
+      <button class="btn-gold" style="flex:1;border-color:var(--border2);color:var(--muted)" onclick="showScreen('aideckbuilder')">AI Build</button>
+    </div>
+    <div id="decks-list"></div>
+  </div>
+</div>
+
+<!-- DECK BUILDER -->
+<div class="screen" id="screen-deckbuilder">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">Back</button></div>
+  <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
+    <input class="inp" id="deck-name-inp" placeholder="Deck name..." style="flex:1">
+    <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
+    <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--gold);white-space:nowrap"><span id="builder-count">0</span> cards</div>
+  </div>
+  <div class="builder-body">
+    <div><div class="zone-label">Basic Lands</div>
+      <div class="land-strip">
+        <div class="land-chip"><div style="font-size:16px">☀️</div><div style="font-size:7px;color:var(--muted);font-family:'Cinzel',serif">PLAINS</div><div style="display:flex;gap:2px;align-items:center"><button class="land-pm" onclick="removeBasicLand('Plains')">−</button><span style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="lc-Plains">0</span><button class="land-pm" onclick="addBasicLand('Plains')">+</button></div></div>
+        <div class="land-chip"><div style="font-size:16px">🌊</div><div style="font-size:7px;color:var(--muted);font-family:'Cinzel',serif">ISLAND</div><div style="display:flex;gap:2px;align-items:center"><button class="land-pm" onclick="removeBasicLand('Island')">−</button><span style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="lc-Island">0</span><button class="land-pm" onclick="addBasicLand('Island')">+</button></div></div>
+        <div class="land-chip"><div style="font-size:16px">🌑</div><div style="font-size:7px;color:var(--muted);font-family:'Cinzel',serif">SWAMP</div><div style="display:flex;gap:2px;align-items:center"><button class="land-pm" onclick="removeBasicLand('Swamp')">−</button><span style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="lc-Swamp">0</span><button class="land-pm" onclick="addBasicLand('Swamp')">+</button></div></div>
+        <div class="land-chip"><div style="font-size:16px">🏔</div><div style="font-size:7px;color:var(--muted);font-family:'Cinzel',serif">MOUNTAIN</div><div style="display:flex;gap:2px;align-items:center"><button class="land-pm" onclick="removeBasicLand('Mountain')">−</button><span style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="lc-Mountain">0</span><button class="land-pm" onclick="addBasicLand('Mountain')">+</button></div></div>
+        <div class="land-chip"><div style="font-size:16px">🌲</div><div style="font-size:7px;color:var(--muted);font-family:'Cinzel',serif">FOREST</div><div style="display:flex;gap:2px;align-items:center"><button class="land-pm" onclick="removeBasicLand('Forest')">−</button><span style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="lc-Forest">0</span><button class="land-pm" onclick="addBasicLand('Forest')">+</button></div></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <input class="inp" id="search-inp-builder" placeholder="Search cards..." style="flex:1" onkeydown="if(event.key==='Enter')searchCards('builder-results','builder')">
+      <button class="btn-ask" onclick="searchCards('builder-results','builder')">Search</button>
+    </div>
+    <div class="builder-cols">
+      <div class="builder-left"><div class="zone-label">Results — tap to zoom and add</div><div class="results-grid" id="builder-results"></div></div>
+      <div class="builder-right"><div class="zone-label">Deck</div><div id="builder-list"></div></div>
+    </div>
+    <button class="btn-gold" onclick="saveDeck()">Save Deck</button>
+  </div>
+</div>
+
+<!-- AI DECK BUILDER -->
+<div class="screen" id="screen-aideckbuilder">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">Back</button></div>
+  <div class="screen-body">
+    <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">AI Deck Builder</div>
+    <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
+    <textarea class="inp" id="ai-deck-prompt" placeholder="Describe your deck e.g. red goblin aggro, blue control, black zombie sacrifice..." style="height:80px;resize:none"></textarea>
+    <div class="zone-label">Examples — tap to use</div>
+    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Red and black zombie deck with sacrifice mechanics</div>
+    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Blue control deck that counters spells</div>
+    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Green elf tribal deck</div>
+    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Red goblin burn deck</div>
+    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">White knight warriors deck</div>
+    <button class="btn-gold" id="ai-build-btn" onclick="buildAIDeck()">Build My Deck</button>
+    <div id="ai-deck-result"></div>
+  </div>
+</div>
+
+<!-- ROOMS -->
+<div class="screen" id="screen-rooms">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">Home</button></div>
+  <div class="screen-body">
+    <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
+    <div id="rooms-grid"></div>
+  </div>
+</div>
+
+<!-- GAME ROOM -->
+<div class="screen" id="screen-room">
+  <div class="room-header">
+    <div><div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold)" id="room-title">Table 1</div><div style="font-size:10px;color:var(--muted)" id="turn-indicator">Waiting...</div></div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <div style="font-size:10px;background:var(--bg4);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;color:var(--muted)" id="room-role-badge">Playing</div>
+      <button class="icon-btn" onclick="requestEndGame()" style="border-color:#5a1a1a;color:var(--red)">End Game</button>
+      <button class="icon-btn" onclick="leaveRoom()">Leave</button>
+    </div>
+  </div>
+  <div id="end-game-banner" style="display:none;background:#2a0808;border-bottom:1px solid #5a1a1a;padding:10px 14px;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px;">
+    <span style="font-size:12px;color:var(--red)" id="end-game-msg"></span>
+    <button class="btn-sm danger" onclick="requestEndGame()">Confirm End</button>
+  </div>
+  <div class="room-tabs">
+    <div class="room-tab active" data-tab="board" onclick="switchRoomTab('board')">Board</div>
+    <div class="room-tab" data-tab="life" onclick="switchRoomTab('life')">Life</div>
+    <div class="room-tab" data-tab="rules" onclick="switchRoomTab('rules')">Rules</div>
+    <div class="room-tab" data-tab="info" onclick="switchRoomTab('info')">Info</div>
+  </div>
+  <div class="room-view active" id="rv-board">
+    <div class="board-section">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px" id="room-p2-name">Player 2</div>
+        <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="room-p2-life">♥ 20</div>
+      </div>
+      <div class="zone-label">Hand</div><div class="hand-zone" id="hand-p2"></div>
+      <div class="zone-row">
+        <div class="zone-col"><div class="zone-mini-label">Library</div>
+          <div class="deck-pile" onclick="drawCard()"><div class="deck-count-lbl" id="lib-count-p2">0</div><div style="font-size:7px;color:#1a3a1a">DRAW</div></div>
+          <button class="stack-btn" onclick="shuffleLib()">SHUFFLE</button></div>
+        <div class="zone-col"><div class="zone-mini-label">Graveyard</div><div class="gy-pile" id="gy-p2"><div class="gy-empty">☠</div></div></div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;justify-content:space-between"><div class="zone-label" style="margin:0">Battlefield</div><button class="stack-btn" style="width:auto" onclick="untapAll()">Untap All</button></div>
+          <div class="battlefield" id="bf-p2"></div></div>
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--border);text-align:center;position:relative;flex-shrink:0;margin:0 8px"><span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--bg);color:var(--border2);padding:0 8px">⊕</span></div>
+    <div class="board-section">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px" id="room-p1-name">Player 1</div>
+        <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="room-p1-life">♥ 20</div>
+      </div>
+      <div class="zone-row">
+        <div class="zone-col"><div class="zone-mini-label">Library</div>
+          <div class="deck-pile" onclick="drawCard()"><div class="deck-count-lbl" id="lib-count-p1">0</div><div style="font-size:7px;color:#1a3a1a">DRAW</div></div>
+          <button class="stack-btn" onclick="shuffleLib()">SHUFFLE</button></div>
+        <div class="zone-col"><div class="zone-mini-label">Graveyard</div><div class="gy-pile" id="gy-p1"><div class="gy-empty">☠</div></div></div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;justify-content:space-between"><div class="zone-label" style="margin:0">Battlefield</div><button class="stack-btn" style="width:auto" onclick="untapAll()">Untap All</button></div>
+          <div class="battlefield" id="bf-p1"></div></div>
+      </div>
+      <div class="zone-label">Hand</div><div class="hand-zone" id="hand-p1"></div>
+    </div>
+    <div class="board-controls">
+      <button class="ctrl-btn primary" onclick="startGame()">▶ Start</button>
+      <button class="ctrl-btn primary" onclick="endTurn()">End Turn</button>
+      <button class="ctrl-btn" onclick="showTokenOverlay()">Token</button>
+    </div>
+  </div>
+  <div class="room-view" id="rv-life">
+    <div class="life-card"><div class="life-name" id="life-p2-name">PLAYER 2</div><div class="life-num" id="life-p2-num">20</div>
+      <div class="life-btns"><button class="life-btn minus" onclick="changeLife(1,-10)">−10</button><button class="life-btn minus" onclick="changeLife(1,-5)">−5</button><button class="life-btn minus" onclick="changeLife(1,-1)">−1</button><button class="life-btn plus" onclick="changeLife(1,1)">+1</button><button class="life-btn plus" onclick="changeLife(1,5)">+5</button></div></div>
+    <div style="border-top:1px solid var(--border)"></div>
+    <div class="life-card"><div class="life-name" id="life-p1-name">PLAYER 1</div><div class="life-num" id="life-p1-num">20</div>
+      <div class="life-btns"><button class="life-btn minus" onclick="changeLife(0,-10)">−10</button><button class="life-btn minus" onclick="changeLife(0,-5)">−5</button><button class="life-btn minus" onclick="changeLife(0,-1)">−1</button><button class="life-btn plus" onclick="changeLife(0,1)">+1</button><button class="life-btn plus" onclick="changeLife(0,5)">+5</button></div></div>
+  </div>
+  <div class="room-view" id="rv-rules">
+    <div class="rules-msgs" id="rules-msgs"><div class="rules-msg ai">Ask me anything about MTG rules! e.g. "does deathtouch work with trample?"</div></div>
+    <div class="rules-input-row"><input class="inp" id="rules-inp" placeholder="Ask a rules question..." onkeydown="if(event.key==='Enter')askRules()"><button class="btn-ask" onclick="askRules()">Ask</button></div>
+  </div>
+  <div class="room-view" id="rv-info" style="padding:12px;gap:8px">
+    <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px">
+      <div class="zone-label">Players</div>
+      <div style="font-size:14px;margin-bottom:4px" id="room-p1-info">-</div>
+      <div style="font-size:14px" id="room-p2-info">-</div>
+    </div>
+    <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px">
+      <div class="zone-label">Spectators</div>
+      <div style="font-size:13px;color:var(--muted)" id="spec-list">None</div>
+    </div>
+  </div>
+</div>
+
+<!-- WHO'S PLAYING -->
+<div class="screen" id="screen-whoplaying">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">Home</button></div>
+  <div class="screen-body">
+    <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
+    <div id="who-list"></div>
+    <button class="btn-gold" style="border-color:var(--border2);color:var(--muted)" onclick="loadWhoPlaying()">Refresh</button>
+  </div>
+</div>
+
+<!-- AI PRACTICE TABLE -->
+<div class="screen" id="screen-aitable">
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">Home</button></div>
+  <div id="ai-table-setup" style="display:flex">
+    <div style="font-family:'Cinzel',serif;font-size:18px;color:#b07ae0;letter-spacing:2px">AI Practice Table</div>
+    <div style="font-size:13px;color:var(--muted);line-height:1.6">Play solo against an AI opponent. Select a deck in Library first.</div>
+    <div><div class="zone-label">Difficulty</div>
+      <select class="inp" id="ai-difficulty">
+        <option value="easy">Easy — AI makes mistakes, attacks randomly</option>
+        <option value="medium">Medium — AI plays sensibly</option>
+        <option value="hard">Hard — AI builds a counter-deck against yours</option>
+      </select>
+    </div>
+    <div style="font-size:12px;color:var(--muted);background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px;line-height:1.6">
+      Your selected deck will be used. AI builds its own deck from Scryfall based on difficulty.
+    </div>
+    <button class="btn-gold" id="ai-start-btn" onclick="startAIGame()">Start Game</button>
+    <div id="ai-setup-status" style="font-size:12px;color:var(--muted);text-align:center;min-height:20px"></div>
+  </div>
+  <div id="ai-table-game" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border2);background:var(--bg2);flex-shrink:0">
+      <div style="font-family:'Cinzel',serif;font-size:11px;color:#b07ae0" id="ai-deck-label">AI</div>
+      <div style="font-family:'Cinzel',serif;font-size:12px;padding:3px 10px;border-radius:6px;border:1px solid var(--border2)" id="ai-turn-indicator">Your Turn</div>
+      <button class="icon-btn" onclick="if(confirm('Quit?')){resetAITable();}">Quit</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:8px;padding-bottom:4px">
+      <div id="ai-win-banner" style="display:none;background:linear-gradient(135deg,#1a1a0a,#2a2010);border:1px solid var(--gold);border-radius:12px;padding:20px;text-align:center">
+        <div style="font-family:'Cinzel',serif;font-size:28px;color:var(--gold)" id="ai-win-msg"></div>
+        <button class="btn-gold" style="margin-top:12px;max-width:200px" onclick="resetAITable()">Play Again</button>
+      </div>
+      <div class="ai-board-section">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px">AI OPPONENT</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="font-size:10px;color:var(--muted)">Hand: <span id="ai-hand-count">0</span> Lib: <span id="ai-lib-count">0</span></div>
+            <div class="ai-life-big" id="ai-life-display">20</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px"><button class="stack-btn" style="width:auto;padding:2px 8px" onclick="aiChangeAILife(-1)">-1</button><button class="stack-btn" style="width:auto;padding:2px 8px" onclick="aiChangeAILife(+1)">+1</button></div>
+        <div class="zone-label">AI Battlefield</div>
+        <div class="battlefield" id="ai-bf"></div>
+      </div>
+      <div style="border-top:1px solid var(--border);text-align:center;position:relative;flex-shrink:0"><span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--bg);color:var(--border2);padding:0 8px">⊕</span></div>
+      <div class="ai-board-section">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px">YOU</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="font-size:10px;color:var(--muted)">Lib: <span id="player-lib-count">0</span> GY: <span id="ai-gy-count">0</span></div>
+            <div class="ai-life-big" id="player-life-display">20</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px"><button class="stack-btn" style="width:auto;padding:2px 8px" onclick="aiChangeLife(-1)">-1</button><button class="stack-btn" style="width:auto;padding:2px 8px" onclick="aiChangeLife(+1)">+1</button></div>
+        <div class="zone-label">Your Battlefield — tap card to view and act</div>
+        <div class="battlefield" id="player-ai-bf"></div>
+        <div class="zone-label">Your Hand — tap card to view and play</div>
+        <div class="hand-zone" id="player-hand-cards"></div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;max-height:120px;overflow-y:auto" id="ai-game-log"></div>
+    </div>
+    <div id="ai-action-btns" style="display:flex;gap:6px;padding:8px;border-top:1px solid var(--border2);background:var(--bg2);flex-shrink:0;flex-wrap:wrap">
+      <button class="ctrl-btn primary" onclick="aiDrawCard()">Draw</button>
+      <button class="ctrl-btn primary" onclick="aiUntapAll()">Untap All</button>
+      <button class="ctrl-btn" onclick="showAITokenOverlay()">+ Token</button>
+      <button class="ctrl-btn primary" onclick="aiEndTurn()">End Turn</button>
+    </div>
+  </div>
+</div>
+
+<!-- FORMAT PICKER OVERLAY -->
+<div class="overlay" id="overlay-format" style="display:none">
+  <div class="overlay-box">
+    <button class="overlay-close" onclick="closeOverlay('overlay-format')">✕</button>
+    <div class="overlay-title">Choose Format — <span id="format-room-title"></span></div>
+    <button class="format-btn" onclick="selectFormat('standard')"><div class="format-icon">🃏</div><div><div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">Standard 60</div><div style="font-size:11px;color:var(--muted)">60 card deck</div></div></button>
+    <button class="format-btn" onclick="selectFormat('commander')"><div class="format-icon">👑</div><div><div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">Commander 100</div><div style="font-size:11px;color:var(--muted)">100 card singleton</div></div></button>
+  </div>
+</div>
+
+<!-- DECK PICKER OVERLAY -->
+<div class="overlay" id="overlay-deckpicker" style="display:none">
+  <div class="overlay-box">
+    <button class="overlay-close" onclick="closeOverlay('overlay-deckpicker')">✕</button>
+    <div class="overlay-title" id="deck-picker-title">Pick Your Deck</div>
+    <div id="deck-picker-list"></div>
+  </div>
+</div>
+
+<!-- TOKEN OVERLAY -->
+<div class="overlay" id="overlay-tokens" style="display:none">
+  <div class="overlay-box">
+    <button class="overlay-close" onclick="closeOverlay('overlay-tokens')">✕</button>
+    <div class="overlay-title">Add Token</div>
+    <input type="hidden" id="token-pi" value="0">
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+      <button class="ctrl-btn" onclick="addTokenPreset('1/1 Creature','1/1')">1/1 Creature</button>
+      <button class="ctrl-btn" onclick="addTokenPreset('2/2 Zombie','2/2')">2/2 Zombie</button>
+      <button class="ctrl-btn" onclick="addTokenPreset('3/3 Beast','3/3')">3/3 Beast</button>
+      <button class="ctrl-btn" onclick="addTokenPreset('1/1 Soldier','1/1')">1/1 Soldier</button>
+      <button class="ctrl-btn" onclick="addTokenPreset('4/4 Dragon','4/4')">4/4 Dragon</button>
+      <button class="ctrl-btn" onclick="addTokenPreset('2/2 Knight','2/2')">2/2 Knight</button>
+    </div>
+    <div class="zone-label">Custom</div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <input class="inp" id="tok-name" placeholder="Name" style="flex:1">
+      <input class="inp" id="tok-pt" placeholder="P/T" style="width:80px">
+      <button class="btn-ask" onclick="addCustomToken()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- ACTION SHEET -->
+<div id="action-sheet">
+  <div class="action-box">
+    <div class="action-title" id="action-title">Card Actions</div>
+    <div id="action-btns"></div>
+    <button class="btn-action" style="color:var(--muted)" onclick="closeActionSheet()">Cancel</button>
+  </div>
+</div>
+
+<!-- CARD ZOOM -->
+<div id="card-zoom">
+  <div class="zoom-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <button id="zoom-prev-btn" onclick="zoomPrev()" style="display:none;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:10px;width:52px;height:44px;font-size:26px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0">‹</button>
+      <span id="zoom-counter" style="font-family:'Cinzel',serif;font-size:12px;color:var(--muted);flex:1;text-align:center;letter-spacing:2px"></span>
+      <button id="zoom-next-btn" onclick="zoomNext()" style="display:none;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:10px;width:52px;height:44px;font-size:26px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0">›</button>
+    </div>
+    <div class="zoom-inner">
+      <img id="zoom-img" src="" alt="">
+      <div class="zoom-info">
+        <div class="zoom-name" id="zoom-name"></div>
+        <div class="zoom-type" id="zoom-type"></div>
+        <div class="zoom-text-body" id="zoom-text"></div>
+        <div class="zoom-pt-val" id="zoom-pt"></div>
+      </div>
+    </div>
+    <div class="zoom-btns">
+      <button class="btn-gold" id="zoom-add-btn" onclick="zoomAddToDeck()" style="flex:1;display:none">+ Add to Deck</button>
+      <button class="btn-gold" id="zoom-save-btn" onclick="zoomSaveToCollection()" style="flex:1;display:none">+ Save to Collection</button>
+      <button class="btn-gold" id="zoom-pick-btn" onclick="if(window._draftPickFn)window._draftPickFn()" style="flex:1;display:none;border-color:var(--green);color:var(--green)">Pick This Card</button>
+      <button class="btn-gold" style="flex:1;border-color:#b07ae0;color:#b07ae0" onclick="explainCurrentCard()">? Explain</button>
+      <button class="btn-gold" style="flex:1;border-color:var(--border2);color:var(--muted)" onclick="closeZoom()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- DECK VIEWER OVERLAY -->
+<div class="overlay" id="overlay-deckviewer" style="display:none">
+  <div class="overlay-box" style="max-height:95vh;padding:14px;padding-bottom:calc(14px + var(--safe-bot))">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div>
+        <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold)" id="dv-deck-name">Deck</div>
+        <div style="font-size:10px;color:var(--muted)" id="dv-counter">1 / 60</div>
+      </div>
+      <button class="overlay-close" onclick="closeOverlay('overlay-deckviewer');renderMyDecks()">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%">
+        <button id="dv-prev" onclick="dvPrev()" style="display:none;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;width:44px;height:260px;font-size:28px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0">‹</button>
+        <img id="dv-img" src="" alt="" style="width:220px;height:308px;border-radius:10px;object-fit:cover;box-shadow:0 4px 20px #000c;flex-shrink:0">
+        <button id="dv-next" onclick="dvNext()" style="display:none;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;width:44px;height:260px;font-size:28px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0">›</button>
+      </div>
+      <div style="width:100%;text-align:center">
+        <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold);margin-bottom:3px" id="dv-name"></div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px" id="dv-type"></div>
+        <div style="font-size:12px;color:var(--text);line-height:1.5;margin-bottom:4px;text-align:left" id="dv-text"></div>
+        <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold);margin-bottom:4px" id="dv-pt"></div>
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px" id="dv-count"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button class="btn-gold" style="flex:1;padding:10px" onclick="document.getElementById('dv-swap-area').style.display=document.getElementById('dv-swap-area').style.display==='none'?'block':'none'">Swap Card</button>
+      <button class="btn-gold" style="flex:1;padding:10px;border-color:#5a1a1a;color:var(--red)" onclick="dvRemoveCard()">Remove</button>
+    </div>
+    <div id="dv-swap-area" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input class="inp" id="dv-swap-inp" placeholder="Search replacement..." style="flex:1" onkeydown="if(event.key==='Enter')dvSwapSearch()">
+        <button class="btn-ask" onclick="dvSwapSearch()">Search</button>
+      </div>
+      <div class="results-grid" id="dv-swap-results"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CARD PREVIEW (fullscreen) -->
+<div id="card-preview">
+  <img id="preview-img" src="" alt="">
+  <div id="preview-actions" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:0 16px;max-width:400px"></div>
+  <div style="display:flex;gap:8px;margin-top:4px">
+    <button id="preview-explain-btn" style="display:none;padding:8px 16px;font-family:'Cinzel',serif;font-size:11px;background:var(--bg4);border:1px solid #b07ae0;color:#b07ae0;border-radius:8px;cursor:pointer" onclick="explainPreviewCard()">? Explain Card</button>
+    <button id="preview-close-btn" onclick="closePreview()">CLOSE</button>
+  </div>
+</div>
+
+<!-- AI TOKEN OVERLAY -->
+<div class="overlay" id="overlay-ai-tokens" style="display:none">
+  <div class="overlay-box">
+    <button class="overlay-close" onclick="closeOverlay('overlay-ai-tokens')">✕</button>
+    <div class="overlay-title">Add Token to Battlefield</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+      <button class="ctrl-btn" onclick="addAIToken('1/1 Creature','1/1')">1/1 Creature</button>
+      <button class="ctrl-btn" onclick="addAIToken('2/2 Zombie','2/2')">2/2 Zombie</button>
+      <button class="ctrl-btn" onclick="addAIToken('3/3 Beast','3/3')">3/3 Beast</button>
+      <button class="ctrl-btn" onclick="addAIToken('1/1 Soldier','1/1')">1/1 Soldier</button>
+      <button class="ctrl-btn" onclick="addAIToken('4/4 Dragon','4/4')">4/4 Dragon</button>
+      <button class="ctrl-btn" onclick="addAIToken('2/2 Knight','2/2')">2/2 Knight</button>
+      <button class="ctrl-btn" onclick="addAIToken('1/1 Goblin','1/1')">1/1 Goblin</button>
+      <button class="ctrl-btn" onclick="addAIToken('1/1 Elf','1/1')">1/1 Elf</button>
+    </div>
+    <div class="zone-label">Custom Token</div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <input class="inp" id="ai-tok-name" placeholder="Name e.g. Saproling" style="flex:1">
+      <input class="inp" id="ai-tok-pt" placeholder="P/T e.g. 1/1" style="width:90px">
+      <button class="btn-ask" onclick="addAICustomToken()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- CARD EXPLAIN OVERLAY -->
+<div class="overlay" id="overlay-explain" style="display:none">
+  <div class="overlay-box" style="max-height:85vh">
+    <button class="overlay-close" onclick="closeOverlay('overlay-explain')">✕</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <img id="explain-card-img" src="" style="width:60px;height:84px;border-radius:6px;flex-shrink:0">
+      <div>
+        <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold)" id="explain-card-name"></div>
+        <div style="font-size:11px;color:var(--muted)" id="explain-card-type"></div>
+      </div>
+    </div>
+    <div id="explain-msgs" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;margin-bottom:10px">
+      <div class="rules-msg ai" id="explain-initial">Tap ? to explain this card</div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <input class="inp" id="explain-inp" placeholder="Ask about this card..." style="flex:1" onkeydown="if(event.key==='Enter')askExplainCard()">
+      <button class="btn-ask" onclick="askExplainCard()">Ask</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -1433,515 +1943,5 @@ if (document.readyState === 'loading') {
 // goHome is called by initProfile or confirmWelcome
 
 </script>
-</head>
-<body>
-
-<!-- COMMUNITY DECKS -->
-<div class="screen" id="screen-community">
-  <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div>
-    <button class="icon-btn" onclick="goHome()">Home</button>
-  </div>
-  <div class="screen-body">
-    <div style="font-family:'Cinzel',serif;font-size:16px;color:#5ae07a;letter-spacing:2px">🌐 Community Decks</div>
-    <div style="font-size:13px;color:var(--muted);line-height:1.6">Browse decks shared by other players. Copy any deck to play with — you can't edit the original.</div>
-    <div style="font-size:11px;color:var(--muted);background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px;line-height:1.6">
-      To share your own deck, go to <strong style="color:var(--gold)">Library → Decks</strong> and tap <strong style="color:#5ae07a">Share</strong> next to any deck.
-    </div>
-    <button class="btn-gold" style="border-color:#1a4a1a;color:#5ae07a" onclick="loadCommunityDecks()">↺ Refresh</button>
-    <div id="community-list"></div>
-  </div>
-</div>
-
-<!-- WELCOME (first time only) -->
-<div class="screen" id="screen-welcome">
-  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:30px;gap:20px;background:radial-gradient(ellipse at 50% 30%,#1a1508,#080705)">
-    <div style="font-size:56px">♛</div>
-    <div style="font-family:'Cinzel',serif;font-size:28px;letter-spacing:8px;color:var(--gold);text-align:center">HEYNS HQ</div>
-    <div style="font-size:12px;letter-spacing:4px;color:var(--muted);text-align:center;text-transform:uppercase">The Gathering Table</div>
-    <div style="width:100%;max-width:320px;background:var(--bg3);border:1px solid var(--border2);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:14px;margin-top:10px">
-      <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold);text-align:center;letter-spacing:2px">WELCOME</div>
-      <div style="font-size:13px;color:var(--muted);text-align:center;line-height:1.6">What should we call you? This name will show when you play at the tables.</div>
-      <div>
-        <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:2px;color:var(--gold);margin-bottom:6px">YOUR NAME</div>
-        <input class="inp" id="welcome-name" placeholder="e.g. Tommy" onkeydown="if(event.key==='Enter')confirmWelcome()" maxlength="20" style="text-align:center;font-size:18px;font-family:'Cinzel',serif">
-      </div>
-      <button class="btn-gold" onclick="confirmWelcome()" style="margin-top:4px">Enter the Table ✦</button>
-    </div>
-  </div>
-</div>
-
-<!-- HOME -->
-<div class="screen" id="screen-home">
-  <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v4.0</span></div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
-      <button class="icon-btn" onclick="editUsername()">✎ Name</button>
-    </div>
-  </div>
-  <div class="screen-body">
-    <div class="home-greeting">Welcome back</div>
-    <div class="home-cards">
-      <div class="home-card" onclick="goToLibrary()"><div class="home-card-icon">📚</div><div><div class="home-card-title">Library</div><div class="home-card-desc">Your collection, decks and card search</div></div></div>
-      <div class="home-card" onclick="goToRooms()"><div class="home-card-icon">🏠</div><div><div class="home-card-title">Rooms</div><div class="home-card-desc">Join a table and play</div></div></div>
-      <div class="home-card" onclick="goToWhoPlaying()"><div class="home-card-icon">👥</div><div><div class="home-card-title">Who's Playing</div><div class="home-card-desc">See who's online right now</div></div></div>
-      <div class="home-card" onclick="goToAITable()" style="border-color:#2a1a3a"><div class="home-card-icon">🤖</div><div><div class="home-card-title" style="color:#b07ae0">AI Practice Table</div><div class="home-card-desc">Play solo against an AI opponent</div></div></div>
-      <div class="home-card" onclick="goToCommunity()" style="border-color:#1a2a1a"><div class="home-card-icon">🌐</div><div><div class="home-card-title" style="color:#5ae07a">Community Decks</div><div class="home-card-desc">Browse and borrow decks from other players</div></div></div>
-    </div>
-  </div>
-</div>
-
-<!-- LIBRARY -->
-<div class="screen" id="screen-library">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">Home</button></div>
-  <div class="lib-tabs">
-    <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">Search</div>
-    <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">Collection</div>
-    <div class="lib-tab" data-tab="decks" onclick="showLibTab('decks')">Decks</div>
-  </div>
-  <div class="lib-view active" id="lv-search">
-    <div class="zone-label">Colour</div>
-    <div class="filter-row" style="margin-bottom:6px">
-      <button class="color-btn" data-c="W" style="background:#f5f0d0" onclick="toggleColor('W')">☀</button>
-      <button class="color-btn" data-c="U" style="background:#3a6ea8" onclick="toggleColor('U')">💧</button>
-      <button class="color-btn" data-c="B" style="background:#2a2a2a;color:#aaa" onclick="toggleColor('B')">💀</button>
-      <button class="color-btn" data-c="R" style="background:#c84a30" onclick="toggleColor('R')">🔥</button>
-      <button class="color-btn" data-c="G" style="background:#2a6a30" onclick="toggleColor('G')">🌲</button>
-      <button class="color-btn" data-c="C" style="background:#888;color:#fff" onclick="toggleColor('C')">◇</button>
-    </div>
-    <div class="zone-label">Type</div>
-    <div class="filter-row" style="margin-bottom:6px">
-      <button class="type-btn" data-t="creature" onclick="toggleType('creature')">Creature</button>
-      <button class="type-btn" data-t="instant" onclick="toggleType('instant')">Instant</button>
-      <button class="type-btn" data-t="sorcery" onclick="toggleType('sorcery')">Sorcery</button>
-      <button class="type-btn" data-t="enchantment" onclick="toggleType('enchantment')">Enchantment</button>
-      <button class="type-btn" data-t="artifact" onclick="toggleType('artifact')">Artifact</button>
-      <button class="type-btn" data-t="planeswalker" onclick="toggleType('planeswalker')">Planeswalker</button>
-    </div>
-    <div class="zone-label">Mana Cost</div>
-    <div class="filter-row" style="margin-bottom:8px">
-      <button class="cmc-btn" data-cmc="0" onclick="toggleCmc('0')">0</button>
-      <button class="cmc-btn" data-cmc="1" onclick="toggleCmc('1')">1</button>
-      <button class="cmc-btn" data-cmc="2" onclick="toggleCmc('2')">2</button>
-      <button class="cmc-btn" data-cmc="3" onclick="toggleCmc('3')">3</button>
-      <button class="cmc-btn" data-cmc="4" onclick="toggleCmc('4')">4</button>
-      <button class="cmc-btn" data-cmc="5" onclick="toggleCmc('5')">5</button>
-      <button class="cmc-btn" data-cmc=">=6" onclick="toggleCmc('>=6')">6+</button>
-    </div>
-    <div style="display:flex;gap:8px">
-      <input class="inp" id="search-inp-search" placeholder="Card name (optional)..." style="flex:1" onkeydown="if(event.key==='Enter')searchCards('search-results','search')">
-      <button class="btn-ask" onclick="searchCards('search-results','search')">Search</button>
-    </div>
-    <div class="zone-label">Results — tap to zoom, save to collection</div>
-    <div class="results-grid" id="search-results"></div>
-  </div>
-  <div class="lib-view" id="lv-collection">
-    <div style="font-size:11px;color:var(--muted)">Saved Cards (<span id="coll-count">0</span>)</div>
-    <div class="results-grid" id="coll-saved"></div>
-  </div>
-  <div class="lib-view" id="lv-decks">
-    <div style="font-size:11px;color:var(--muted)" id="decks-count">0 decks</div>
-    <div style="display:flex;gap:8px">
-      <button class="btn-gold" style="flex:1" onclick="newDeck()">Build Deck</button>
-      <button class="btn-gold" style="flex:1;border-color:var(--border2);color:var(--muted)" onclick="showScreen('aideckbuilder')">AI Build</button>
-    </div>
-    <div id="decks-list"></div>
-  </div>
-</div>
-
-<!-- DECK BUILDER -->
-<div class="screen" id="screen-deckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">Back</button></div>
-  <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
-    <input class="inp" id="deck-name-inp" placeholder="Deck name..." style="flex:1">
-    <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
-    <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--gold);white-space:nowrap"><span id="builder-count">0</span> cards</div>
-  </div>
-  <div class="builder-body">
-    <div><div class="zone-label">Basic Lands</div>
-      <div class="land-strip">
-        <div class="land-chip"><div style="font-size:16px">☀️</div><div style="font-size:7px;color:var(--muted);font-family:'Cinzel',serif">PLAINS</div><div style="display:flex;gap:2px;align-items:center"><button class="land-pm" onclick="removeBasicLand('Plains')">−</button><span style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="lc-Plains">0</span><button class="land-pm" onclick="addBasicLand('Plains')">+</button></div></div>
-        <div class="land-chip"><div style="font-size:16px">🌊</div><div style="font-size:7px;color:var(--muted);font-family:'Cinzel',serif">ISLAND</div><div style="display:flex;gap:2px;align-items:center"><button class="land-pm" onclick="removeBasicLand('Island')">−</button><span style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="lc-Island">0</span><button class="land-pm" onclick="addBasicLand('Island')">+</button></div></div>
-        <div class="land-chip"><div style="font-size:16px">🌑</div><div style="font-size:7px;color:var(--muted);font-family:'Cinzel',serif">SWAMP</div><div style="display:flex;gap:2px;align-items:center"><button class="land-pm" onclick="removeBasicLand('Swamp')">−</button><span style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="lc-Swamp">0</span><button class="land-pm" onclick="addBasicLand('Swamp')">+</button></div></div>
-        <div class="land-chip"><div style="font-size:16px">🏔</div><div style="font-size:7px;color:var(--muted);font-family:'Cinzel',serif">MOUNTAIN</div><div style="display:flex;gap:2px;align-items:center"><button class="land-pm" onclick="removeBasicLand('Mountain')">−</button><span style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="lc-Mountain">0</span><button class="land-pm" onclick="addBasicLand('Mountain')">+</button></div></div>
-        <div class="land-chip"><div style="font-size:16px">🌲</div><div style="font-size:7px;color:var(--muted);font-family:'Cinzel',serif">FOREST</div><div style="display:flex;gap:2px;align-items:center"><button class="land-pm" onclick="removeBasicLand('Forest')">−</button><span style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="lc-Forest">0</span><button class="land-pm" onclick="addBasicLand('Forest')">+</button></div></div>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px">
-      <input class="inp" id="search-inp-builder" placeholder="Search cards..." style="flex:1" onkeydown="if(event.key==='Enter')searchCards('builder-results','builder')">
-      <button class="btn-ask" onclick="searchCards('builder-results','builder')">Search</button>
-    </div>
-    <div class="builder-cols">
-      <div class="builder-left"><div class="zone-label">Results — tap to zoom and add</div><div class="results-grid" id="builder-results"></div></div>
-      <div class="builder-right"><div class="zone-label">Deck</div><div id="builder-list"></div></div>
-    </div>
-    <button class="btn-gold" onclick="saveDeck()">Save Deck</button>
-  </div>
-</div>
-
-<!-- AI DECK BUILDER -->
-<div class="screen" id="screen-aideckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">Back</button></div>
-  <div class="screen-body">
-    <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">AI Deck Builder</div>
-    <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
-    <textarea class="inp" id="ai-deck-prompt" placeholder="Describe your deck e.g. red goblin aggro, blue control, black zombie sacrifice..." style="height:80px;resize:none"></textarea>
-    <div class="zone-label">Examples — tap to use</div>
-    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Red and black zombie deck with sacrifice mechanics</div>
-    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Blue control deck that counters spells</div>
-    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Green elf tribal deck</div>
-    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">Red goblin burn deck</div>
-    <div class="ai-example" onclick="document.getElementById('ai-deck-prompt').value=this.textContent">White knight warriors deck</div>
-    <button class="btn-gold" id="ai-build-btn" onclick="buildAIDeck()">Build My Deck</button>
-    <div id="ai-deck-result"></div>
-  </div>
-</div>
-
-<!-- ROOMS -->
-<div class="screen" id="screen-rooms">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">Home</button></div>
-  <div class="screen-body">
-    <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
-    <div id="rooms-grid"></div>
-  </div>
-</div>
-
-<!-- GAME ROOM -->
-<div class="screen" id="screen-room">
-  <div class="room-header">
-    <div><div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold)" id="room-title">Table 1</div><div style="font-size:10px;color:var(--muted)" id="turn-indicator">Waiting...</div></div>
-    <div style="display:flex;gap:6px;align-items:center">
-      <div style="font-size:10px;background:var(--bg4);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;color:var(--muted)" id="room-role-badge">Playing</div>
-      <button class="icon-btn" onclick="requestEndGame()" style="border-color:#5a1a1a;color:var(--red)">End Game</button>
-      <button class="icon-btn" onclick="leaveRoom()">Leave</button>
-    </div>
-  </div>
-  <div id="end-game-banner" style="display:none;background:#2a0808;border-bottom:1px solid #5a1a1a;padding:10px 14px;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px;">
-    <span style="font-size:12px;color:var(--red)" id="end-game-msg"></span>
-    <button class="btn-sm danger" onclick="requestEndGame()">Confirm End</button>
-  </div>
-  <div class="room-tabs">
-    <div class="room-tab active" data-tab="board" onclick="switchRoomTab('board')">Board</div>
-    <div class="room-tab" data-tab="life" onclick="switchRoomTab('life')">Life</div>
-    <div class="room-tab" data-tab="rules" onclick="switchRoomTab('rules')">Rules</div>
-    <div class="room-tab" data-tab="info" onclick="switchRoomTab('info')">Info</div>
-  </div>
-  <div class="room-view active" id="rv-board">
-    <div class="board-section">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px" id="room-p2-name">Player 2</div>
-        <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="room-p2-life">♥ 20</div>
-      </div>
-      <div class="zone-label">Hand</div><div class="hand-zone" id="hand-p2"></div>
-      <div class="zone-row">
-        <div class="zone-col"><div class="zone-mini-label">Library</div>
-          <div class="deck-pile" onclick="drawCard()"><div class="deck-count-lbl" id="lib-count-p2">0</div><div style="font-size:7px;color:#1a3a1a">DRAW</div></div>
-          <button class="stack-btn" onclick="shuffleLib()">SHUFFLE</button></div>
-        <div class="zone-col"><div class="zone-mini-label">Graveyard</div><div class="gy-pile" id="gy-p2"><div class="gy-empty">☠</div></div></div>
-        <div style="flex:1;display:flex;flex-direction:column;gap:4px">
-          <div style="display:flex;justify-content:space-between"><div class="zone-label" style="margin:0">Battlefield</div><button class="stack-btn" style="width:auto" onclick="untapAll()">Untap All</button></div>
-          <div class="battlefield" id="bf-p2"></div></div>
-      </div>
-    </div>
-    <div style="border-top:1px solid var(--border);text-align:center;position:relative;flex-shrink:0;margin:0 8px"><span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--bg);color:var(--border2);padding:0 8px">⊕</span></div>
-    <div class="board-section">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px" id="room-p1-name">Player 1</div>
-        <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)" id="room-p1-life">♥ 20</div>
-      </div>
-      <div class="zone-row">
-        <div class="zone-col"><div class="zone-mini-label">Library</div>
-          <div class="deck-pile" onclick="drawCard()"><div class="deck-count-lbl" id="lib-count-p1">0</div><div style="font-size:7px;color:#1a3a1a">DRAW</div></div>
-          <button class="stack-btn" onclick="shuffleLib()">SHUFFLE</button></div>
-        <div class="zone-col"><div class="zone-mini-label">Graveyard</div><div class="gy-pile" id="gy-p1"><div class="gy-empty">☠</div></div></div>
-        <div style="flex:1;display:flex;flex-direction:column;gap:4px">
-          <div style="display:flex;justify-content:space-between"><div class="zone-label" style="margin:0">Battlefield</div><button class="stack-btn" style="width:auto" onclick="untapAll()">Untap All</button></div>
-          <div class="battlefield" id="bf-p1"></div></div>
-      </div>
-      <div class="zone-label">Hand</div><div class="hand-zone" id="hand-p1"></div>
-    </div>
-    <div class="board-controls">
-      <button class="ctrl-btn primary" onclick="startGame()">▶ Start</button>
-      <button class="ctrl-btn primary" onclick="endTurn()">End Turn</button>
-      <button class="ctrl-btn" onclick="showTokenOverlay()">Token</button>
-    </div>
-  </div>
-  <div class="room-view" id="rv-life">
-    <div class="life-card"><div class="life-name" id="life-p2-name">PLAYER 2</div><div class="life-num" id="life-p2-num">20</div>
-      <div class="life-btns"><button class="life-btn minus" onclick="changeLife(1,-10)">−10</button><button class="life-btn minus" onclick="changeLife(1,-5)">−5</button><button class="life-btn minus" onclick="changeLife(1,-1)">−1</button><button class="life-btn plus" onclick="changeLife(1,1)">+1</button><button class="life-btn plus" onclick="changeLife(1,5)">+5</button></div></div>
-    <div style="border-top:1px solid var(--border)"></div>
-    <div class="life-card"><div class="life-name" id="life-p1-name">PLAYER 1</div><div class="life-num" id="life-p1-num">20</div>
-      <div class="life-btns"><button class="life-btn minus" onclick="changeLife(0,-10)">−10</button><button class="life-btn minus" onclick="changeLife(0,-5)">−5</button><button class="life-btn minus" onclick="changeLife(0,-1)">−1</button><button class="life-btn plus" onclick="changeLife(0,1)">+1</button><button class="life-btn plus" onclick="changeLife(0,5)">+5</button></div></div>
-  </div>
-  <div class="room-view" id="rv-rules">
-    <div class="rules-msgs" id="rules-msgs"><div class="rules-msg ai">Ask me anything about MTG rules! e.g. "does deathtouch work with trample?"</div></div>
-    <div class="rules-input-row"><input class="inp" id="rules-inp" placeholder="Ask a rules question..." onkeydown="if(event.key==='Enter')askRules()"><button class="btn-ask" onclick="askRules()">Ask</button></div>
-  </div>
-  <div class="room-view" id="rv-info" style="padding:12px;gap:8px">
-    <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px">
-      <div class="zone-label">Players</div>
-      <div style="font-size:14px;margin-bottom:4px" id="room-p1-info">-</div>
-      <div style="font-size:14px" id="room-p2-info">-</div>
-    </div>
-    <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px">
-      <div class="zone-label">Spectators</div>
-      <div style="font-size:13px;color:var(--muted)" id="spec-list">None</div>
-    </div>
-  </div>
-</div>
-
-<!-- WHO'S PLAYING -->
-<div class="screen" id="screen-whoplaying">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">Home</button></div>
-  <div class="screen-body">
-    <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
-    <div id="who-list"></div>
-    <button class="btn-gold" style="border-color:var(--border2);color:var(--muted)" onclick="loadWhoPlaying()">Refresh</button>
-  </div>
-</div>
-
-<!-- AI PRACTICE TABLE -->
-<div class="screen" id="screen-aitable">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">Home</button></div>
-  <div id="ai-table-setup" style="display:flex">
-    <div style="font-family:'Cinzel',serif;font-size:18px;color:#b07ae0;letter-spacing:2px">AI Practice Table</div>
-    <div style="font-size:13px;color:var(--muted);line-height:1.6">Play solo against an AI opponent. Select a deck in Library first.</div>
-    <div><div class="zone-label">Difficulty</div>
-      <select class="inp" id="ai-difficulty">
-        <option value="easy">Easy — AI makes mistakes, attacks randomly</option>
-        <option value="medium">Medium — AI plays sensibly</option>
-        <option value="hard">Hard — AI builds a counter-deck against yours</option>
-      </select>
-    </div>
-    <div style="font-size:12px;color:var(--muted);background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px;line-height:1.6">
-      Your selected deck will be used. AI builds its own deck from Scryfall based on difficulty.
-    </div>
-    <button class="btn-gold" id="ai-start-btn" onclick="startAIGame()">Start Game</button>
-    <div id="ai-setup-status" style="font-size:12px;color:var(--muted);text-align:center;min-height:20px"></div>
-  </div>
-  <div id="ai-table-game" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border2);background:var(--bg2);flex-shrink:0">
-      <div style="font-family:'Cinzel',serif;font-size:11px;color:#b07ae0" id="ai-deck-label">AI</div>
-      <div style="font-family:'Cinzel',serif;font-size:12px;padding:3px 10px;border-radius:6px;border:1px solid var(--border2)" id="ai-turn-indicator">Your Turn</div>
-      <button class="icon-btn" onclick="if(confirm('Quit?')){resetAITable();}">Quit</button>
-    </div>
-    <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:8px;padding-bottom:4px">
-      <div id="ai-win-banner" style="display:none;background:linear-gradient(135deg,#1a1a0a,#2a2010);border:1px solid var(--gold);border-radius:12px;padding:20px;text-align:center">
-        <div style="font-family:'Cinzel',serif;font-size:28px;color:var(--gold)" id="ai-win-msg"></div>
-        <button class="btn-gold" style="margin-top:12px;max-width:200px" onclick="resetAITable()">Play Again</button>
-      </div>
-      <div class="ai-board-section">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px">AI OPPONENT</div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <div style="font-size:10px;color:var(--muted)">Hand: <span id="ai-hand-count">0</span> Lib: <span id="ai-lib-count">0</span></div>
-            <div class="ai-life-big" id="ai-life-display">20</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:6px"><button class="stack-btn" style="width:auto;padding:2px 8px" onclick="aiChangeAILife(-1)">-1</button><button class="stack-btn" style="width:auto;padding:2px 8px" onclick="aiChangeAILife(+1)">+1</button></div>
-        <div class="zone-label">AI Battlefield</div>
-        <div class="battlefield" id="ai-bf"></div>
-      </div>
-      <div style="border-top:1px solid var(--border);text-align:center;position:relative;flex-shrink:0"><span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--bg);color:var(--border2);padding:0 8px">⊕</span></div>
-      <div class="ai-board-section">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--muted);letter-spacing:2px">YOU</div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <div style="font-size:10px;color:var(--muted)">Lib: <span id="player-lib-count">0</span> GY: <span id="ai-gy-count">0</span></div>
-            <div class="ai-life-big" id="player-life-display">20</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:6px"><button class="stack-btn" style="width:auto;padding:2px 8px" onclick="aiChangeLife(-1)">-1</button><button class="stack-btn" style="width:auto;padding:2px 8px" onclick="aiChangeLife(+1)">+1</button></div>
-        <div class="zone-label">Your Battlefield — tap card to view and act</div>
-        <div class="battlefield" id="player-ai-bf"></div>
-        <div class="zone-label">Your Hand — tap card to view and play</div>
-        <div class="hand-zone" id="player-hand-cards"></div>
-      </div>
-      <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px;max-height:120px;overflow-y:auto" id="ai-game-log"></div>
-    </div>
-    <div id="ai-action-btns" style="display:flex;gap:6px;padding:8px;border-top:1px solid var(--border2);background:var(--bg2);flex-shrink:0;flex-wrap:wrap">
-      <button class="ctrl-btn primary" onclick="aiDrawCard()">Draw</button>
-      <button class="ctrl-btn primary" onclick="aiUntapAll()">Untap All</button>
-      <button class="ctrl-btn" onclick="showAITokenOverlay()">+ Token</button>
-      <button class="ctrl-btn primary" onclick="aiEndTurn()">End Turn</button>
-    </div>
-  </div>
-</div>
-
-<!-- FORMAT PICKER OVERLAY -->
-<div class="overlay" id="overlay-format" style="display:none">
-  <div class="overlay-box">
-    <button class="overlay-close" onclick="closeOverlay('overlay-format')">✕</button>
-    <div class="overlay-title">Choose Format — <span id="format-room-title"></span></div>
-    <button class="format-btn" onclick="selectFormat('standard')"><div class="format-icon">🃏</div><div><div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">Standard 60</div><div style="font-size:11px;color:var(--muted)">60 card deck</div></div></button>
-    <button class="format-btn" onclick="selectFormat('commander')"><div class="format-icon">👑</div><div><div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">Commander 100</div><div style="font-size:11px;color:var(--muted)">100 card singleton</div></div></button>
-  </div>
-</div>
-
-<!-- DECK PICKER OVERLAY -->
-<div class="overlay" id="overlay-deckpicker" style="display:none">
-  <div class="overlay-box">
-    <button class="overlay-close" onclick="closeOverlay('overlay-deckpicker')">✕</button>
-    <div class="overlay-title" id="deck-picker-title">Pick Your Deck</div>
-    <div id="deck-picker-list"></div>
-  </div>
-</div>
-
-<!-- TOKEN OVERLAY -->
-<div class="overlay" id="overlay-tokens" style="display:none">
-  <div class="overlay-box">
-    <button class="overlay-close" onclick="closeOverlay('overlay-tokens')">✕</button>
-    <div class="overlay-title">Add Token</div>
-    <input type="hidden" id="token-pi" value="0">
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-      <button class="ctrl-btn" onclick="addTokenPreset('1/1 Creature','1/1')">1/1 Creature</button>
-      <button class="ctrl-btn" onclick="addTokenPreset('2/2 Zombie','2/2')">2/2 Zombie</button>
-      <button class="ctrl-btn" onclick="addTokenPreset('3/3 Beast','3/3')">3/3 Beast</button>
-      <button class="ctrl-btn" onclick="addTokenPreset('1/1 Soldier','1/1')">1/1 Soldier</button>
-      <button class="ctrl-btn" onclick="addTokenPreset('4/4 Dragon','4/4')">4/4 Dragon</button>
-      <button class="ctrl-btn" onclick="addTokenPreset('2/2 Knight','2/2')">2/2 Knight</button>
-    </div>
-    <div class="zone-label">Custom</div>
-    <div style="display:flex;gap:8px;margin-top:6px">
-      <input class="inp" id="tok-name" placeholder="Name" style="flex:1">
-      <input class="inp" id="tok-pt" placeholder="P/T" style="width:80px">
-      <button class="btn-ask" onclick="addCustomToken()">Add</button>
-    </div>
-  </div>
-</div>
-
-<!-- ACTION SHEET -->
-<div id="action-sheet">
-  <div class="action-box">
-    <div class="action-title" id="action-title">Card Actions</div>
-    <div id="action-btns"></div>
-    <button class="btn-action" style="color:var(--muted)" onclick="closeActionSheet()">Cancel</button>
-  </div>
-</div>
-
-<!-- CARD ZOOM -->
-<div id="card-zoom">
-  <div class="zoom-box">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <button id="zoom-prev-btn" onclick="zoomPrev()" style="display:none;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:10px;width:52px;height:44px;font-size:26px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0">‹</button>
-      <span id="zoom-counter" style="font-family:'Cinzel',serif;font-size:12px;color:var(--muted);flex:1;text-align:center;letter-spacing:2px"></span>
-      <button id="zoom-next-btn" onclick="zoomNext()" style="display:none;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:10px;width:52px;height:44px;font-size:26px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0">›</button>
-    </div>
-    <div class="zoom-inner">
-      <img id="zoom-img" src="" alt="">
-      <div class="zoom-info">
-        <div class="zoom-name" id="zoom-name"></div>
-        <div class="zoom-type" id="zoom-type"></div>
-        <div class="zoom-text-body" id="zoom-text"></div>
-        <div class="zoom-pt-val" id="zoom-pt"></div>
-      </div>
-    </div>
-    <div class="zoom-btns">
-      <button class="btn-gold" id="zoom-add-btn" onclick="zoomAddToDeck()" style="flex:1;display:none">+ Add to Deck</button>
-      <button class="btn-gold" id="zoom-save-btn" onclick="zoomSaveToCollection()" style="flex:1;display:none">+ Save to Collection</button>
-      <button class="btn-gold" id="zoom-pick-btn" onclick="if(window._draftPickFn)window._draftPickFn()" style="flex:1;display:none;border-color:var(--green);color:var(--green)">Pick This Card</button>
-      <button class="btn-gold" style="flex:1;border-color:#b07ae0;color:#b07ae0" onclick="explainCurrentCard()">? Explain</button>
-      <button class="btn-gold" style="flex:1;border-color:var(--border2);color:var(--muted)" onclick="closeZoom()">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- DECK VIEWER OVERLAY -->
-<div class="overlay" id="overlay-deckviewer" style="display:none">
-  <div class="overlay-box" style="max-height:95vh;padding:14px;padding-bottom:calc(14px + var(--safe-bot))">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <div>
-        <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold)" id="dv-deck-name">Deck</div>
-        <div style="font-size:10px;color:var(--muted)" id="dv-counter">1 / 60</div>
-      </div>
-      <button class="overlay-close" onclick="closeOverlay('overlay-deckviewer');renderMyDecks()">✕</button>
-    </div>
-    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:10px">
-      <div style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%">
-        <button id="dv-prev" onclick="dvPrev()" style="display:none;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;width:44px;height:260px;font-size:28px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0">‹</button>
-        <img id="dv-img" src="" alt="" style="width:220px;height:308px;border-radius:10px;object-fit:cover;box-shadow:0 4px 20px #000c;flex-shrink:0">
-        <button id="dv-next" onclick="dvNext()" style="display:none;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;width:44px;height:260px;font-size:28px;cursor:pointer;align-items:center;justify-content:center;flex-shrink:0">›</button>
-      </div>
-      <div style="width:100%;text-align:center">
-        <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold);margin-bottom:3px" id="dv-name"></div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:4px" id="dv-type"></div>
-        <div style="font-size:12px;color:var(--text);line-height:1.5;margin-bottom:4px;text-align:left" id="dv-text"></div>
-        <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold);margin-bottom:4px" id="dv-pt"></div>
-        <div style="font-size:10px;color:var(--muted);letter-spacing:1px" id="dv-count"></div>
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <button class="btn-gold" style="flex:1;padding:10px" onclick="document.getElementById('dv-swap-area').style.display=document.getElementById('dv-swap-area').style.display==='none'?'block':'none'">Swap Card</button>
-      <button class="btn-gold" style="flex:1;padding:10px;border-color:#5a1a1a;color:var(--red)" onclick="dvRemoveCard()">Remove</button>
-    </div>
-    <div id="dv-swap-area" style="display:none">
-      <div style="display:flex;gap:8px;margin-bottom:8px">
-        <input class="inp" id="dv-swap-inp" placeholder="Search replacement..." style="flex:1" onkeydown="if(event.key==='Enter')dvSwapSearch()">
-        <button class="btn-ask" onclick="dvSwapSearch()">Search</button>
-      </div>
-      <div class="results-grid" id="dv-swap-results"></div>
-    </div>
-  </div>
-</div>
-
-<!-- CARD PREVIEW (fullscreen) -->
-<div id="card-preview">
-  <img id="preview-img" src="" alt="">
-  <div id="preview-actions" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:0 16px;max-width:400px"></div>
-  <div style="display:flex;gap:8px;margin-top:4px">
-    <button id="preview-explain-btn" style="display:none;padding:8px 16px;font-family:'Cinzel',serif;font-size:11px;background:var(--bg4);border:1px solid #b07ae0;color:#b07ae0;border-radius:8px;cursor:pointer" onclick="explainPreviewCard()">? Explain Card</button>
-    <button id="preview-close-btn" onclick="closePreview()">CLOSE</button>
-  </div>
-</div>
-
-<!-- AI TOKEN OVERLAY -->
-<div class="overlay" id="overlay-ai-tokens" style="display:none">
-  <div class="overlay-box">
-    <button class="overlay-close" onclick="closeOverlay('overlay-ai-tokens')">✕</button>
-    <div class="overlay-title">Add Token to Battlefield</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-      <button class="ctrl-btn" onclick="addAIToken('1/1 Creature','1/1')">1/1 Creature</button>
-      <button class="ctrl-btn" onclick="addAIToken('2/2 Zombie','2/2')">2/2 Zombie</button>
-      <button class="ctrl-btn" onclick="addAIToken('3/3 Beast','3/3')">3/3 Beast</button>
-      <button class="ctrl-btn" onclick="addAIToken('1/1 Soldier','1/1')">1/1 Soldier</button>
-      <button class="ctrl-btn" onclick="addAIToken('4/4 Dragon','4/4')">4/4 Dragon</button>
-      <button class="ctrl-btn" onclick="addAIToken('2/2 Knight','2/2')">2/2 Knight</button>
-      <button class="ctrl-btn" onclick="addAIToken('1/1 Goblin','1/1')">1/1 Goblin</button>
-      <button class="ctrl-btn" onclick="addAIToken('1/1 Elf','1/1')">1/1 Elf</button>
-    </div>
-    <div class="zone-label">Custom Token</div>
-    <div style="display:flex;gap:8px;margin-top:6px">
-      <input class="inp" id="ai-tok-name" placeholder="Name e.g. Saproling" style="flex:1">
-      <input class="inp" id="ai-tok-pt" placeholder="P/T e.g. 1/1" style="width:90px">
-      <button class="btn-ask" onclick="addAICustomToken()">Add</button>
-    </div>
-  </div>
-</div>
-
-<!-- CARD EXPLAIN OVERLAY -->
-<div class="overlay" id="overlay-explain" style="display:none">
-  <div class="overlay-box" style="max-height:85vh">
-    <button class="overlay-close" onclick="closeOverlay('overlay-explain')">✕</button>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-      <img id="explain-card-img" src="" style="width:60px;height:84px;border-radius:6px;flex-shrink:0">
-      <div>
-        <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold)" id="explain-card-name"></div>
-        <div style="font-size:11px;color:var(--muted)" id="explain-card-type"></div>
-      </div>
-    </div>
-    <div id="explain-msgs" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;margin-bottom:10px">
-      <div class="rules-msg ai" id="explain-initial">Tap ? to explain this card</div>
-    </div>
-    <div style="display:flex;gap:8px">
-      <input class="inp" id="explain-inp" placeholder="Ask about this card..." style="flex:1" onkeydown="if(event.key==='Enter')askExplainCard()">
-      <button class="btn-ask" onclick="askExplainCard()">Ask</button>
-    </div>
-  </div>
-</div>
-
-<!-- TOAST -->
-<div id="toast"></div>
-
 </body>
 </html>
