@@ -230,13 +230,17 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <div style="font-family:'Cinzel',serif;font-size:12px;color:#7a8ae0" id="draft-pack-label">Pack 1 of 3 · Pick 1</div>
       <div style="font-size:11px;color:var(--muted)" id="draft-picked-count">0 cards picked</div>
     </div>
-    <div style="flex:1;overflow-y:auto;padding:10px">
-      <div class="zone-label">Pick a card from this pack</div>
-      <div class="results-grid" id="draft-pack-grid"></div>
+    <div style="flex:1;overflow-y:auto;padding:12px">
+      <div id="draft-pack-grid"></div>
     </div>
-    <div style="padding:8px;border-top:1px solid var(--border2);background:var(--bg2);flex-shrink:0">
-      <div class="zone-label">Your picks so far</div>
-      <div style="display:flex;gap:4px;overflow-x:auto;padding:4px 0" id="draft-picked-grid"></div>
+    <!-- Confirm pick area -->
+    <div id="draft-confirm-area" style="padding:10px 12px;border-top:2px solid var(--border2);background:var(--bg2);flex-shrink:0">
+      <div style="font-size:12px;color:var(--muted);text-align:center">Select a card then tap Done to pass the pack</div>
+    </div>
+    <!-- Picked cards strip -->
+    <div style="padding:6px 10px;border-top:1px solid var(--border);background:var(--bg3);flex-shrink:0">
+      <div style="font-size:9px;color:var(--muted);letter-spacing:2px;font-family:'Cinzel',serif;margin-bottom:4px">YOUR PICKS</div>
+      <div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:2px" id="draft-picked-grid"></div>
     </div>
   </div>
 
@@ -295,7 +299,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v6.2</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v6.4</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="editUsername()">✎ Name</button>
@@ -701,7 +705,14 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold)" id="dv-deck-name">Deck</div>
         <div style="font-size:10px;color:var(--muted)" id="dv-counter">1 / 60</div>
       </div>
-      <button class="overlay-close" onclick="closeOverlay('overlay-deckviewer');renderMyDecks()">✕</button>
+      <button class="overlay-close" onclick="closeOverlay('overlay-deckviewer');
+    // Restore normal deck viewer nav
+    window.dvPrev=()=>{if(_deckViewIdx>0){_deckViewIdx--;showDeckViewCard();}};
+    window.dvNext=()=>{const cards=currentProfile.decks[_deckViewDeckIdx]?.cards||[];if(_deckViewIdx<cards.length-1){_deckViewIdx++;showDeckViewCard();}};
+    // Hide copy btn and restore edit btns
+    const cb=document.getElementById('dv-copy-btn');if(cb)cb.style.display='none';
+    const btns=document.querySelectorAll('#overlay-deckviewer .btn-gold');btns.forEach(b=>{if(b.id!=='dv-copy-btn')b.style.display='';});
+    if(window._communityViewCards){window._communityViewCards=null;} else {renderMyDecks();}">✕</button>
     </div>
     <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:10px">
       <div style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%">
@@ -2245,6 +2256,86 @@ window.viewCommunityDeck = async (pubId) => {
   } catch(e) { toast('Failed to load deck', true); }
 };
 
+// Store community decks for viewing
+window._communityDecks = {};
+
+window.viewCommunityDeck = async (pubId) => {
+  // Get deck data - try cache first
+  let deck = window._communityDecks[pubId];
+  if (!deck) {
+    try {
+      const snap = await getDoc(doc(db, 'community_decks', pubId));
+      if (!snap.exists()) return toast('Deck not found', true);
+      deck = snap.data();
+      window._communityDecks[pubId] = deck;
+    } catch(e) { toast('Failed to load deck: ' + e.message, true); return; }
+  }
+
+  const cards = deck.cards || [];
+  if (!cards.length) return toast('This deck has no cards', true);
+
+  // Open the deck viewer overlay in read-only mode
+  document.getElementById('dv-deck-name').textContent = deck.name + ' (by ' + deck.authorName + ')';
+  document.getElementById('dv-counter').textContent = '1 / ' + cards.length;
+
+  // Store for navigation
+  window._communityViewCards = cards;
+  window._communityViewIdx = 0;
+  window._communityViewId = pubId;
+
+  // Override dv buttons for read-only
+  document.getElementById('overlay-deckviewer').style.display = 'flex';
+
+  // Show first card
+  _showCommunityCard(0);
+
+  // Override prev/next to use community viewer
+  window.dvPrev = () => {
+    if(window._communityViewIdx > 0) { window._communityViewIdx--; _showCommunityCard(window._communityViewIdx); }
+  };
+  window.dvNext = () => {
+    const cards = window._communityViewCards || [];
+    if(window._communityViewIdx < cards.length-1) { window._communityViewIdx++; _showCommunityCard(window._communityViewIdx); }
+  };
+};
+
+function _showCommunityCard(idx) {
+  const cards = window._communityViewCards || [];
+  const card = cards[idx];
+  if (!card) return;
+  document.getElementById('dv-img').src = imgUrl(card);
+  document.getElementById('dv-name').textContent = card.name || '';
+  document.getElementById('dv-type').textContent = card.type_line || '';
+  document.getElementById('dv-text').textContent = card.oracle_text || card.card_faces?.[0]?.oracle_text || '';
+  document.getElementById('dv-pt').textContent = card.power ? card.power + '/' + card.toughness : '';
+  document.getElementById('dv-counter').textContent = (idx+1) + ' / ' + cards.length;
+  document.getElementById('dv-prev').style.display = idx > 0 ? 'flex' : 'none';
+  document.getElementById('dv-next').style.display = idx < cards.length-1 ? 'flex' : 'none';
+  const count = cards.filter(c => c.name === card.name).length;
+  document.getElementById('dv-count').textContent = count > 1 ? count + 'x in deck' : '1x in deck';
+  document.getElementById('dv-swap-area').style.display = 'none';
+
+  // Hide edit buttons, show copy button instead
+  const swapBtn = document.querySelector('#overlay-deckviewer .btn-gold:not([style*="red"])');
+  const removeBtn = document.querySelector('#overlay-deckviewer .btn-gold[style*="red"]');
+  if (swapBtn) swapBtn.style.display = 'none';
+  if (removeBtn) removeBtn.style.display = 'none';
+
+  // Add copy button if not already there
+  let copyBtn = document.getElementById('dv-copy-btn');
+  if (!copyBtn) {
+    copyBtn = document.createElement('button');
+    copyBtn.id = 'dv-copy-btn';
+    copyBtn.className = 'btn-gold';
+    copyBtn.style.cssText = 'width:100%;padding:12px;margin-bottom:10px;border-color:var(--green);color:var(--green)';
+    copyBtn.textContent = '✓ Copy This Deck to My Decks';
+    const swapArea = document.getElementById('dv-swap-area');
+    swapArea.parentNode.insertBefore(copyBtn, swapArea);
+  }
+  copyBtn.style.display = 'block';
+  copyBtn.onclick = () => { closeOverlay('overlay-deckviewer'); borrowDeck(window._communityViewId); };
+}
+
 window.borrowDeck = async (pubId) => {
   try {
     const snap = await getDoc(doc(db, 'community_decks', pubId));
@@ -2447,70 +2538,141 @@ window.startDraft = async () => {
   document.getElementById('draft-start-btn').disabled = false;
 };
 
+// Draft state: selectedCardIdx tracks which card you've selected before confirming
 function renderDraftPick() {
   if (!draftState) return;
-  const { currentPack, currentPick, allPacks, myDraft, packsEach } = draftState;
-
-  // My current pack
+  const { currentPack, currentPick, allPacks, myDraft, packsEach, selectedCardIdx } = draftState;
   const myPack = allPacks[0][currentPack];
-  const remaining = myPack ? myPack.cards : [];
+  const cards = myPack ? myPack.cards : [];
 
   document.getElementById('draft-pack-label').textContent =
-    `Pack ${currentPack + 1} of ${packsEach} · Pick ${currentPick + 1} · ${remaining.length} cards left`;
-  document.getElementById('draft-picked-count').textContent = myDraft.length + ' cards picked';
+    `Pack ${currentPack+1} of ${packsEach} · Pick ${currentPick+1} of ${cards.length + currentPick} · ${cards.length} cards remaining`;
+  document.getElementById('draft-picked-count').textContent = myDraft.length + ' cards picked so far';
+
+  // Show current viewed card big with nav arrows
+  const viewIdx = draftState.viewIdx || 0;
+  const card = cards[viewIdx];
 
   const grid = document.getElementById('draft-pack-grid');
   grid.innerHTML = '';
-  remaining.forEach((card, i) => {
-    const wrap = document.createElement('div');
-    wrap.className = 'result-wrap';
-    wrap.style.position = 'relative';
-    const img = document.createElement('img');
-    img.src = imgUrl(card);
-    img.className = 'result-card';
-    img.loading = 'lazy';
-    img.style.cssText = 'width:100px;height:140px;border-radius:6px;cursor:pointer;box-shadow:0 2px 8px #0008;';
-    img.onclick = () => {
-      previewCardWithActions(imgUrl(card), [
-        {label:'✓ Pick This Card', fn:()=>pickDraftCard(i)},
-        {label:'★ Save to Collection', fn:()=>{
-          if(!currentProfile.collection) currentProfile.collection=[];
-          if(!currentProfile.collection.find(c=>c.id===card.id)){
-            currentProfile.collection.push({id:card.id,name:card.name,image_uris:card.image_uris,card_faces:card.card_faces,oracle_text:card.oracle_text,type_line:card.type_line,power:card.power,toughness:card.toughness,colors:card.colors,cmc:card.cmc});
-            saveProfile();toast(card.name+' saved to collection!');
-          } else { toast('Already in collection'); }
-        }},
-        {label:'Back — keep browsing', fn:()=>{}},
-      ], card);
-    };
-    wrap.appendChild(img);
-    grid.appendChild(wrap);
-  });
 
-  // Show picked cards
+  if (!card) { grid.innerHTML = '<div style="color:var(--muted);font-size:13px">No cards left in this pack.</div>'; return; }
+
+  // Big card view with prev/next arrows
+  const cardView = document.createElement('div');
+  cardView.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:10px;width:100%';
+
+  // Nav row
+  const navRow = document.createElement('div');
+  navRow.style.cssText = 'display:flex;align-items:center;gap:10px;width:100%;justify-content:center';
+
+  const prevBtn = document.createElement('button');
+  prevBtn.style.cssText = 'background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;width:44px;height:200px;font-size:28px;cursor:pointer;flex-shrink:0';
+  prevBtn.textContent = '‹';
+  prevBtn.disabled = viewIdx === 0;
+  prevBtn.style.opacity = viewIdx === 0 ? '0.3' : '1';
+  prevBtn.onclick = () => { draftState.viewIdx = Math.max(0, viewIdx-1); renderDraftPick(); };
+
+  const cardImg = document.createElement('img');
+  cardImg.src = imgUrl(card);
+  cardImg.style.cssText = 'width:200px;height:280px;border-radius:10px;object-fit:cover;box-shadow:0 4px 20px #000c;border:' + (draftState.selectedCardIdx===viewIdx?'3px solid var(--gold)':'3px solid transparent');
+
+  const nextBtn = document.createElement('button');
+  nextBtn.style.cssText = 'background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;width:44px;height:200px;font-size:28px;cursor:pointer;flex-shrink:0';
+  nextBtn.textContent = '›';
+  nextBtn.disabled = viewIdx >= cards.length-1;
+  nextBtn.style.opacity = viewIdx >= cards.length-1 ? '0.3' : '1';
+  nextBtn.onclick = () => { draftState.viewIdx = Math.min(cards.length-1, viewIdx+1); renderDraftPick(); };
+
+  navRow.appendChild(prevBtn); navRow.appendChild(cardImg); navRow.appendChild(nextBtn);
+
+  // Card counter
+  const counter = document.createElement('div');
+  counter.style.cssText = 'font-family:"Cinzel",serif;font-size:11px;color:var(--muted);letter-spacing:2px';
+  counter.textContent = (viewIdx+1) + ' / ' + cards.length;
+
+  // Card info
+  const info = document.createElement('div');
+  info.style.cssText = 'text-align:center;width:100%;max-width:300px';
+  info.innerHTML = `<div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold);margin-bottom:2px">${card.name}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px">${card.type_line||''}</div>
+    <div style="font-size:12px;color:var(--text);line-height:1.4">${card.oracle_text||''}</div>
+    ${card.power?`<div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold);margin-top:4px">${card.power}/${card.toughness}</div>`:''}`;
+
+  // Action buttons
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;width:100%;max-width:320px';
+
+  const selectBtn = document.createElement('button');
+  selectBtn.className = 'btn-gold';
+  selectBtn.style.cssText = 'flex:1;padding:12px;' + (draftState.selectedCardIdx===viewIdx?'border-color:var(--gold);background:#2a2010':'');
+  selectBtn.textContent = draftState.selectedCardIdx===viewIdx ? '✓ Selected' : 'Select This Card';
+  selectBtn.onclick = () => { draftState.selectedCardIdx = viewIdx; renderDraftPick(); };
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-gold';
+  saveBtn.style.cssText = 'flex:1;padding:12px;border-color:#1a4a3a;color:#5ae0a0';
+  saveBtn.textContent = '★ Save to Collection';
+  saveBtn.onclick = () => {
+    if(!currentProfile.collection) currentProfile.collection=[];
+    if(!currentProfile.collection.find(c=>c.id===card.id)){
+      currentProfile.collection.push({id:card.id,name:card.name,image_uris:card.image_uris,card_faces:card.card_faces,oracle_text:card.oracle_text,type_line:card.type_line,power:card.power,toughness:card.toughness,colors:card.colors,cmc:card.cmc});
+      saveProfile(); toast(card.name+' saved to collection!');
+    } else { toast('Already in collection'); }
+  };
+
+  btnRow.appendChild(selectBtn); btnRow.appendChild(saveBtn);
+
+  cardView.appendChild(navRow);
+  cardView.appendChild(counter);
+  cardView.appendChild(info);
+  cardView.appendChild(btnRow);
+  grid.appendChild(cardView);
+
+  // Confirm pick button — only shows when a card is selected
+  const confirmArea = document.getElementById('draft-confirm-area');
+  if (confirmArea) {
+    if (draftState.selectedCardIdx !== undefined && draftState.selectedCardIdx !== null) {
+      const selCard = cards[draftState.selectedCardIdx];
+      confirmArea.innerHTML = `<div style="display:flex;align-items:center;gap:10px;width:100%">
+        ${imgUrl(selCard)?`<img src="${imgUrl(selCard)}" style="width:36px;height:50px;border-radius:4px;flex-shrink:0">`:''}
+        <div style="flex:1;font-size:12px;color:var(--gold);font-family:'Cinzel',serif">${selCard?.name||''} selected</div>
+        <button class="btn-gold" style="padding:10px 16px;border-color:var(--gold)" onclick="confirmDraftPick()">Done — Pass Pack ›</button>
+      </div>`;
+    } else {
+      confirmArea.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center">Select a card then tap Done to pass the pack</div>';
+    }
+  }
+
+  // Show picked cards strip at bottom
   const pickedGrid = document.getElementById('draft-picked-grid');
   pickedGrid.innerHTML = '';
-  myDraft.slice(-8).forEach(card => {
+  myDraft.forEach(c => {
     const img = document.createElement('img');
-    img.src = imgUrl(card);
-    img.style.cssText = 'width:50px;height:70px;border-radius:4px;object-fit:cover;';
-    img.onclick = () => previewCard(imgUrl(card));
+    img.src = imgUrl(c);
+    img.style.cssText = 'width:40px;height:56px;border-radius:3px;object-fit:cover;cursor:pointer;flex-shrink:0';
+    img.onclick = () => previewCard(imgUrl(c));
     pickedGrid.appendChild(img);
   });
 }
 
-window.pickDraftCard = (cardIdx) => {
+window.confirmDraftPick = () => {
   if (!draftState) return;
-  const { allPacks, currentPack, myDraft, playerCount, packsEach } = draftState;
+  const { allPacks, currentPack, myDraft, playerCount, packsEach, selectedCardIdx } = draftState;
+  if (selectedCardIdx === undefined || selectedCardIdx === null) {
+    toast('Select a card first!', true); return;
+  }
   const myPack = allPacks[0][currentPack];
-  if (!myPack || !myPack.cards[cardIdx]) return;
+  if (!myPack || !myPack.cards[selectedCardIdx]) return;
 
-  // Pick card
-  const picked = myPack.cards.splice(cardIdx, 1)[0];
+  // Pick the selected card
+  const picked = myPack.cards.splice(selectedCardIdx, 1)[0];
   myDraft.push(picked);
   draftState.currentPick++;
+  draftState.selectedCardIdx = null;
+  draftState.viewIdx = 0;
 
-  // Simulate other players picking (remove a random card from their packs)
+  // Simulate other players picking one card each
   for (let p = 1; p < playerCount; p++) {
     const theirPack = allPacks[p][currentPack];
     if (theirPack && theirPack.cards.length > 0) {
@@ -2518,20 +2680,30 @@ window.pickDraftCard = (cardIdx) => {
     }
   }
 
-  // Check if pack is done (all cards picked or < playerCount cards left)
+  // Rotate packs (pass to next player — simulated by just continuing with same pack)
+  // In real draft packs pass left/right but since it's solo-simulated we just keep going
   const remaining = myPack.cards.length;
+
   if (remaining === 0) {
+    // This pack is done — move to next pack
     draftState.currentPack++;
     draftState.currentPick = 0;
+    draftState.viewIdx = 0;
     if (draftState.currentPack >= packsEach) {
-      // Draft done!
-      finishDraft();
-      return;
+      finishDraft(); return;
     }
-    toast('Pack ' + (draftState.currentPack + 1) + ' — pick your first card!');
+    toast('Pack ' + (draftState.currentPack+1) + ' opened! Browse and select your card.');
+  } else {
+    toast('Pack passed! ' + remaining + ' cards remain.');
   }
 
   renderDraftPick();
+};
+
+// Keep pickDraftCard for backwards compat
+window.pickDraftCard = (cardIdx) => {
+  draftState.selectedCardIdx = cardIdx;
+  confirmDraftPick();
 };
 
 function finishDraft() {
