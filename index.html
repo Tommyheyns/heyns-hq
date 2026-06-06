@@ -27,13 +27,25 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .btn-ask{background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;padding:10px 14px;font-family:'Cinzel',serif;font-size:11px;cursor:pointer;white-space:nowrap;}
 .zone-label{font-family:'Cinzel',serif;font-size:10px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;margin-bottom:6px;}
 /* Auth */
-#screen-auth{align-items:center;justify-content:center;padding:20px;}
-.auth-box{width:100%;max-width:360px;background:var(--bg3);border:1px solid var(--border2);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:14px;}
-.auth-logo{font-family:'Cinzel',serif;font-size:24px;letter-spacing:4px;color:var(--gold);text-align:center;}
-.auth-tabs{display:flex;gap:6px;}
-.auth-tab{flex:1;padding:8px;text-align:center;font-family:'Cinzel',serif;font-size:11px;border-radius:8px;cursor:pointer;background:var(--bg4);border:1px solid var(--border2);color:var(--muted);}
-.auth-tab.active{border-color:var(--gold-dim);color:var(--gold);}
-.auth-form{display:flex;flex-direction:column;gap:10px;}
+#screen-auth{align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 30%,#1a1508,#080705);}
+.auth-outer{display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;max-width:380px;padding:20px;}
+.auth-crown{font-size:48px;color:var(--gold);line-height:1;margin-bottom:4px;}
+.auth-brand{font-family:'Cinzel',serif;font-size:28px;letter-spacing:8px;color:var(--gold);}
+.auth-tagline{font-size:11px;letter-spacing:4px;color:var(--muted);text-transform:uppercase;margin-bottom:16px;}
+.auth-box{width:100%;background:linear-gradient(160deg,#1a1508,#0d0b05);border:1px solid var(--border2);border-radius:20px;padding:24px;display:flex;flex-direction:column;gap:16px;box-shadow:0 20px 60px #0008;}
+.auth-tabs{display:flex;gap:6px;background:var(--bg);border-radius:10px;padding:4px;}
+.auth-tab{flex:1;padding:10px;text-align:center;font-family:'Cinzel',serif;font-size:11px;letter-spacing:1px;border-radius:8px;cursor:pointer;color:var(--muted);border:none;background:none;transition:all 0.2s;}
+.auth-tab.active{background:var(--bg4);color:var(--gold);border:1px solid var(--border2);}
+.auth-form{display:flex;flex-direction:column;gap:12px;}
+.auth-field{display:flex;flex-direction:column;gap:5px;}
+.auth-field-label{font-family:'Cinzel',serif;font-size:10px;letter-spacing:2px;color:var(--gold);padding-left:2px;}
+.auth-inp{background:#0a0805;border:1px solid var(--border2);color:var(--text);border-radius:10px;padding:12px 14px;font-size:15px;font-family:'Crimson Text',serif;outline:none;width:100%;-webkit-appearance:none;transition:border-color 0.2s;}
+.auth-inp:focus{border-color:var(--gold-dim);box-shadow:0 0 0 2px var(--gold-glow);}
+.auth-inp::placeholder{color:#3a3018;}
+.auth-btn{width:100%;padding:14px;font-family:'Cinzel',serif;font-size:13px;letter-spacing:3px;background:linear-gradient(135deg,#2a1f08,#1a1305);border:1px solid var(--gold-dim);color:var(--gold);border-radius:12px;cursor:pointer;transition:all 0.2s;margin-top:4px;}
+.auth-btn:active{background:var(--border2);transform:scale(0.98);}
+.auth-forgot{background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;text-align:center;padding:4px;text-decoration:underline;font-family:'Crimson Text',serif;}
+.auth-forgot:active{color:var(--gold);}
 /* Home */
 #screen-home .screen-body{justify-content:center;align-items:center;gap:16px;}
 .home-greeting{font-family:'Cinzel',serif;font-size:20px;color:var(--gold);letter-spacing:3px;text-align:center;}
@@ -265,6 +277,15 @@ window.doLogin=async()=>{
   const pw=document.getElementById('login-pw').value;
   if(!email||!pw) return toast('Fill in all fields',true);
   try{await signInWithEmailAndPassword(auth,email,pw);}catch{toast('Invalid email or password',true);}
+};
+window.doForgotPassword=async()=>{
+  const email=document.getElementById('login-email').value.trim();
+  if(!email) return toast('Enter your email first',true);
+  try{
+    const {sendPasswordResetEmail}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    await sendPasswordResetEmail(auth,email);
+    toast('Password reset email sent! Check your inbox.');
+  }catch(e){toast('Error: '+e.message,true);}
 };
 window.doRegister=async()=>{
   const username=document.getElementById('reg-username').value.trim();
@@ -1747,22 +1768,42 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- AUTH -->
 <div class="screen" id="screen-auth" style="display:flex;">
-  <div class="auth-box">
-    <div class="auth-logo">✦ HEYNS HQ</div>
-    <div class="auth-tabs">
-      <div class="auth-tab active" data-tab="login" onclick="showAuthTab('login')">Sign In</div>
-      <div class="auth-tab" data-tab="register" onclick="showAuthTab('register')">Create Account</div>
-    </div>
-    <div id="auth-login" class="auth-form">
-      <input class="inp" id="login-email" type="email" placeholder="Email" autocomplete="email">
-      <input class="inp" id="login-pw" type="password" placeholder="Password" autocomplete="current-password">
-      <button class="btn-gold" onclick="doLogin()">Sign In</button>
-    </div>
-    <div id="auth-register" class="auth-form" style="display:none">
-      <input class="inp" id="reg-username" placeholder="Username (e.g. Tommy)">
-      <input class="inp" id="reg-email" type="email" placeholder="Email">
-      <input class="inp" id="reg-pw" type="password" placeholder="Password (min 6 chars)">
-      <button class="btn-gold" onclick="doRegister()">Create Account</button>
+  <div class="auth-outer">
+    <div class="auth-crown">♛</div>
+    <div class="auth-brand">HEYNS HQ</div>
+    <div class="auth-tagline">The Gathering Table</div>
+    <div class="auth-box">
+      <div class="auth-tabs">
+        <div class="auth-tab active" data-tab="login" onclick="showAuthTab('login')">Sign In</div>
+        <div class="auth-tab" data-tab="register" onclick="showAuthTab('register')">Create Account</div>
+      </div>
+      <div id="auth-login" class="auth-form">
+        <div class="auth-field">
+          <div class="auth-field-label">Email</div>
+          <input class="auth-inp" id="login-email" type="email" placeholder="your@email.com" autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <div class="auth-field-label">Password</div>
+          <input class="auth-inp" id="login-pw" type="password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button class="auth-btn" onclick="doLogin()">✦ Sign In</button>
+        <button class="auth-forgot" onclick="doForgotPassword()">Forgot password?</button>
+      </div>
+      <div id="auth-register" class="auth-form" style="display:none">
+        <div class="auth-field">
+          <div class="auth-field-label">Username</div>
+          <input class="auth-inp" id="reg-username" placeholder="e.g. Tommy">
+        </div>
+        <div class="auth-field">
+          <div class="auth-field-label">Email</div>
+          <input class="auth-inp" id="reg-email" type="email" placeholder="your@email.com">
+        </div>
+        <div class="auth-field">
+          <div class="auth-field-label">Password</div>
+          <input class="auth-inp" id="reg-pw" type="password" placeholder="Min 6 characters">
+        </div>
+        <button class="auth-btn" onclick="doRegister()">✦ Create Account</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1770,7 +1811,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.2</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="doLogout()">Sign Out</button>
@@ -1789,7 +1830,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- LIBRARY -->
 <div class="screen" id="screen-library">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.2</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="lib-tabs">
     <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">🔍 Search</div>
     <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">📚 Collection</div>
@@ -1847,7 +1888,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- DECK BUILDER -->
 <div class="screen" id="screen-deckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.2</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
     <input class="inp" id="deck-name-inp" placeholder="Deck name…" style="flex:1">
     <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
@@ -1877,7 +1918,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- AI DECK BUILDER -->
 <div class="screen" id="screen-aideckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.2</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">🤖 AI Deck Builder</div>
     <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
@@ -1895,7 +1936,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- ROOMS -->
 <div class="screen" id="screen-rooms">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.2</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
     <div class="rooms-grid" id="rooms-grid"></div>
@@ -1990,7 +2031,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 <!-- DRAFT ROOM -->
 <div class="screen" id="screen-draftroom">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.2</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div>
     <div style="display:flex;gap:6px"><button class="icon-btn" onclick="goHome()">🏠</button><button class="icon-btn" onclick="leaveDraftRoom()">Leave</button></div>
   </div>
   <div style="padding:8px 14px;border-bottom:1px solid var(--border2);flex-shrink:0">
@@ -2064,7 +2105,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- WHO'S PLAYING -->
 <div class="screen" id="screen-whoplaying">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.2</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
     <div id="who-list"></div>
@@ -2163,7 +2204,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 <!-- AI PRACTICE TABLE -->
 <div class="screen" id="screen-aitable">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v3.2</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v3.3</span></div>
     <button class="icon-btn" onclick="goHome()">🏠 Home</button>
   </div>
   <!-- Setup -->
