@@ -35,6 +35,24 @@ const uid=()=>Math.random().toString(36).slice(2);
 const imgUrl=c=>c?.image_uris?.normal||c?.card_faces?.[0]?.image_uris?.normal||'';
 const shuffle=arr=>{const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
 
+const _OAK='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';
+async function callAI(sys,usr,tokens=2000){
+  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+_OAK},
+    body:JSON.stringify({model:'gpt-4o-mini',max_tokens:tokens,
+      messages:[{role:'system',content:sys},{role:'user',content:usr}]})});
+  const d=await r.json();if(d.error)throw new Error(d.error.message);
+  return d.choices?.[0]?.message?.content||'';
+}
+async function callAIChat(sys,history,tokens=1000){
+  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+_OAK},
+    body:JSON.stringify({model:'gpt-4o-mini',max_tokens:tokens,
+      messages:[{role:'system',content:sys},...history]})});
+  const d=await r.json();if(d.error)throw new Error(d.error.message);
+  return d.choices?.[0]?.message?.content||'';
+}
+
 // Auth
 onAuthStateChanged(auth,async user=>{
   if(user){
@@ -395,13 +413,9 @@ window.buildAIDeck=async()=>{
   document.getElementById('ai-build-btn').disabled=true;
   const cardCount=format==='commander'?99:60;
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,
-        system:`You are an expert Magic: The Gathering deck builder. The user wants a ${cardCount}-card ${format} deck. Respond ONLY with valid JSON, no markdown, no explanation, just the JSON object: {"deckName":"Name Here","description":"One sentence description","cards":[{"name":"Exact Card Name","count":4},{"name":"Another Card","count":2}],"strategy":"2-3 sentence strategy overview"}. Make sure the total card count adds up to exactly ${cardCount}. Use real MTG card names. Include appropriate lands.`,
-        messages:[{role:'user',content:prompt}]})});
-    const data=await res.json();
-    if(data.error){throw new Error(data.error.message||'API error');}
-    const rawText=data.content?.[0]?.text||'';
+    const rawText=await callAI(
+      `You are an expert Magic: The Gathering deck builder. The user wants a ${cardCount}-card ${format} deck. Respond ONLY with valid JSON, no markdown, no explanation, just the JSON object: {"deckName":"Name Here","description":"One sentence description","cards":[{"name":"Exact Card Name","count":4},{"name":"Another Card","count":2}],"strategy":"2-3 sentence strategy overview"}. Make sure the total card count adds up to exactly ${cardCount}. Use real MTG card names. Include appropriate lands.`,
+      prompt, 3000);
     const cleaned=rawText.replace(/```json|```/g,'').trim();
     const json=JSON.parse(cleaned);
     if(!json.cards||!json.deckName)throw new Error('Invalid response format');
@@ -829,12 +843,7 @@ window.askRules=async()=>{
   msgs.scrollTop=msgs.scrollHeight;
   rulesHistory.push({role:'user',content:q});
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,
-        system:'You are an expert MTG rules judge. Answer clearly in plain English. 2-4 sentences.',
-        messages:rulesHistory})});
-    const data=await res.json();
-    const answer=data.content?.[0]?.text||'No answer.';
+    const answer=await callAIChat('You are an expert MTG rules judge. Answer clearly in plain English. 2-4 sentences.',rulesHistory,1000);
     rulesHistory.push({role:'assistant',content:answer});
     th.className='rules-msg ai';th.textContent=answer;
   }catch{th.className='rules-msg ai';th.textContent='Connection error.';}
@@ -1344,7 +1353,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="doLogout()">Sign Out</button>
@@ -1362,7 +1371,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- LIBRARY -->
 <div class="screen" id="screen-library">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="lib-tabs">
     <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">🔍 Search</div>
     <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">📚 Collection</div>
@@ -1420,7 +1429,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- DECK BUILDER -->
 <div class="screen" id="screen-deckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
     <input class="inp" id="deck-name-inp" placeholder="Deck name…" style="flex:1">
     <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
@@ -1450,7 +1459,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- AI DECK BUILDER -->
 <div class="screen" id="screen-aideckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">🤖 AI Deck Builder</div>
     <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
@@ -1468,7 +1477,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- ROOMS -->
 <div class="screen" id="screen-rooms">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
     <div class="rooms-grid" id="rooms-grid"></div>
@@ -1563,7 +1572,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- DRAFT ROOM -->
 <div class="screen" id="screen-draftroom">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div>
     <div style="display:flex;gap:6px"><button class="icon-btn" onclick="goHome()">🏠</button><button class="icon-btn" onclick="leaveDraftRoom()">Leave</button></div>
   </div>
   <div style="padding:8px 14px;border-bottom:1px solid var(--border2);flex-shrink:0">
@@ -1637,7 +1646,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- WHO'S PLAYING -->
 <div class="screen" id="screen-whoplaying">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
     <div id="who-list"></div>
