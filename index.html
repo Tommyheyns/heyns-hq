@@ -1233,230 +1233,103 @@ window.resetAITable=()=>{
 };
 
 window.startAIGame=async()=>{
-  const theme=document.getElementById('ai-theme-inp').value.trim();
   const difficulty=document.getElementById('ai-difficulty').value;
   const statusEl=document.getElementById('ai-setup-status');
-  statusEl.textContent='🤖 Analysing your deck and building counter…';
+  statusEl.textContent='📦 Building AI deck…';
   document.getElementById('ai-start-btn').disabled=true;
-
   try{
-    // Analyse player deck
     const playerDeckRaw=currentProfile.selectedDeck||currentProfile.decks?.[0]?.cards||[];
-    if(!playerDeckRaw.length){statusEl.textContent='⚠ No deck selected! Go to Library → Decks and select one first.';document.getElementById('ai-start-btn').disabled=false;return;}
+    if(!playerDeckRaw.length){statusEl.textContent='⚠ No deck selected! Go to Library → Decks first.';document.getElementById('ai-start-btn').disabled=false;return;}
+    const playerDeck=playerDeckRaw.map(c=>({...c,instanceId:uid()}));
 
-    // Build deck summary for AI to analyse
-    const deckSummary=playerDeckRaw.reduce((acc,c)=>{
-      if(!acc[c.name]) acc[c.name]={name:c.name,type:c.type_line||'',count:0};
-      acc[c.name].count++; return acc;
-    },{});
-    const topCards=Object.values(deckSummary).sort((a,b)=>b.count-a.count).slice(0,15)
-      .map(c=>`${c.count}x ${c.name} (${c.type})`).join(', ');
+    // Work out player colours
+    const playerColours=new Set();
+    playerDeckRaw.forEach(c=>{if(c.colors)c.colors.forEach(col=>playerColours.add(col));});
+    const allColours=['W','U','B','R','G'];
+    const unusedColours=allColours.filter(c=>!playerColours.has(c));
 
-    // Counter deck quality depends on difficulty
-    const counterInstruction = difficulty==='easy'
-      ? `Build a random 60-card deck that is NOT specifically designed to counter the opponent. Theme: ${theme||'random mix'}. Make it somewhat weak and inconsistent.`
-      : difficulty==='medium'
-      ? `Build a 60-card deck that somewhat counters this opponent deck. You don't need to perfectly counter everything, just a reasonable response. Opponent plays: ${topCards}`
-      : `Build an optimal 60-card deck specifically designed to COUNTER and DESTROY this opponent deck. Analyse their strategy and build hard counters. Opponent plays: ${topCards}. Include removal for their key threats, answers to their strategy, and win conditions they can't deal with.`;
-
-    // Build AI deck via OpenAI
-    const deckText=await callAI(
-      `You are an expert MTG deck builder. ${counterInstruction}. Respond ONLY with JSON: {"deckName":"Name","cards":[{"name":"Card Name","count":4},...]}. Total must equal exactly 60. Use real MTG card names. Include appropriate lands. No extra text, no markdown.`,
-      `Build the deck now.`, 2000);
-    const deckJson=JSON.parse(deckText.replace(/```json|```/g,'').trim());
-
-    statusEl.textContent='📦 Fetching cards…';
-    const aiCards=[];
-    for(const entry of deckJson.cards){
-      try{
-        const r=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);
-        if(!r.ok) continue;
-        const card=await r.json();
-        for(let i=0;i<(entry.count||1);i++) aiCards.push({...card,instanceId:uid()});
-      }catch{}
+    let aiQuery,aiDeckName,landNames;
+    if(difficulty==='easy'){
+      const col=allColours[Math.floor(Math.random()*allColours.length)];
+      aiQuery=`color=${col} type:creature cmc<=3`;
+      aiDeckName=`${{'W':'White','U':'Blue','B':'Black','R':'Red','G':'Green'}[col]} Deck`;
+      landNames=col==='W'?['Plains']:col==='U'?['Island']:col==='B'?['Swamp']:col==='R'?['Mountain']:['Forest'];
+    } else if(difficulty==='medium'){
+      const col=unusedColours.length>0?unusedColours[0]:'B';
+      aiQuery=`color=${col} (type:creature or type:instant) cmc<=4`;
+      aiDeckName=`${{'W':'White','U':'Blue','B':'Black','R':'Red','G':'Green'}[col]} Opposition`;
+      landNames=col==='W'?['Plains']:col==='U'?['Island']:col==='B'?['Swamp']:col==='R'?['Mountain']:['Forest'];
+    } else {
+      aiQuery=`(color=B or color=U) (keyword:destroy or keyword:counter or type:creature) cmc<=4`;
+      aiDeckName='Hard Counter Control';
+      landNames=['Island','Swamp'];
     }
 
-    // Get player deck
-    const playerDeck=(currentProfile.selectedDeck||currentProfile.decks?.[0]?.cards||[]).map(c=>({...c,instanceId:uid()}));
-    if(!playerDeck.length){statusEl.textContent='⚠ No deck selected! Go to Library → Decks and select one first.';document.getElementById('ai-start-btn').disabled=false;return;}
+    // Fetch spells
+    statusEl.textContent='📦 Fetching cards from Scryfall…';
+    const spellR=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(aiQuery)}&order=edhrec&unique=cards`);
+    const spellD=await spellR.json();
+    const spellPool=(spellD.data||[]).filter(c=>imgUrl(c)).slice(0,40);
 
-    // Init game state
-    const counterDesc = difficulty==='easy'?'random deck':difficulty==='medium'?'counter deck':'optimised counter deck';
+    // Fetch lands
+    const landPool=[];
+    for(const ln of landNames){
+      const lr=await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(ln)}`);
+      if(lr.ok) landPool.push(await lr.json());
+    }
+
+    // Build 60 card deck
+    const aiCards=[];
+    const perLand=Math.floor(24/Math.max(landPool.length,1));
+    landPool.forEach(land=>{for(let i=0;i<perLand;i++)aiCards.push({...land,instanceId:uid()});});
+    while(aiCards.length<24&&landPool.length>0) aiCards.push({...landPool[0],instanceId:uid()});
+
+    const maxCopies=difficulty==='hard'?4:difficulty==='medium'?3:2;
+    const used={};
+    for(const card of spellPool){
+      if(aiCards.length>=60) break;
+      if(!used[card.name]) used[card.name]=0;
+      while(used[card.name]<maxCopies&&aiCards.length<60){
+        aiCards.push({...card,instanceId:uid()});
+        used[card.name]++;
+      }
+    }
+    // Top up if short
+    let si=0;
+    while(aiCards.length<60&&spellPool.length>0){
+      aiCards.push({...spellPool[si%spellPool.length],instanceId:uid()});si++;
+    }
+
+    statusEl.textContent='';
+    const counterDesc=difficulty==='easy'?'random deck':difficulty==='medium'?'opposition deck':'hard counter deck';
     aiGame={
-      difficulty,
-      aiDeckName:deckJson.deckName,
-      turn:'player', // player goes first
-      phase:'main',
-      playerLife:20, aiLife:20,
+      difficulty,aiDeckName,
+      turn:'player',phase:'main',
+      playerLife:20,aiLife:20,
       playerLibrary:shuffle(playerDeck),
       aiLibrary:shuffle(aiCards),
-      playerHand:[], aiHand:[],
-      playerBattlefield:[], aiBattlefield:[],
-      playerGraveyard:[], aiGraveyard:[],
-      playerLandsPlayed:0, aiLandsPlayed:0,
-      log:[`Game started! AI is playing "${aiDeckName}" — ${counterDesc} (${aiCards.length} cards loaded)`],
+      playerHand:[],aiHand:[],
+      playerBattlefield:[],aiBattlefield:[],
+      playerGraveyard:[],aiGraveyard:[],
+      playerLandsPlayed:0,aiLandsPlayed:0,
+      log:[`Game started! AI is playing "${aiDeckName}" — ${counterDesc} (${aiCards.length} cards)`],
     };
-
-    // Draw opening hands
     for(let i=0;i<7;i++){
       if(aiGame.playerLibrary.length) aiGame.playerHand.push(aiGame.playerLibrary.shift());
       if(aiGame.aiLibrary.length) aiGame.aiHand.push(aiGame.aiLibrary.shift());
     }
-
     statusEl.textContent='';
     document.getElementById('ai-table-setup').style.display='none';
     document.getElementById('ai-table-game').style.display='flex';
     document.getElementById('ai-deck-label').textContent=`🤖 ${aiDeckName}`;
+    document.getElementById('ai-win-banner').style.display='none';
+    document.getElementById('ai-action-btns').style.display='flex';
     renderAIGame();
   }catch(e){
     console.error('AI Game error:',e);
     statusEl.textContent='Error: '+e.message+'. Try again.';
   }
   document.getElementById('ai-start-btn').disabled=false;
-};
-
-function renderAIGame(){
-  if(!aiGame) return;
-  // Life
-  document.getElementById('ai-life-display').textContent=aiGame.aiLife;
-  document.getElementById('player-life-display').textContent=aiGame.playerLife;
-  document.getElementById('ai-life-display').classList.toggle('low',aiGame.aiLife<=5);
-  document.getElementById('player-life-display').classList.toggle('low',aiGame.playerLife<=5);
-  // Counts
-  document.getElementById('ai-hand-count').textContent=aiGame.aiHand.length;
-  document.getElementById('ai-lib-count').textContent=aiGame.aiLibrary.length;
-  document.getElementById('player-lib-count').textContent=aiGame.playerLibrary.length;
-  document.getElementById('ai-gy-count').textContent=aiGame.playerGraveyard.length;
-  // Turn indicator
-  document.getElementById('ai-turn-indicator').textContent=aiGame.turn==='player'?'Your Turn':'AI Turn';
-  document.getElementById('ai-turn-indicator').style.color=aiGame.turn==='player'?'var(--green)':'var(--red)';
-  // Player hand
-  const handEl=document.getElementById('player-hand-cards');
-  handEl.innerHTML='';
-  aiGame.playerHand.forEach((card,i)=>{
-    const d=document.createElement('div');d.className='card-thumb';
-    d.innerHTML=`<img src="${imgUrl(card)}" loading="lazy">`;
-    d.onclick=()=>showAICardActions(card,i);
-    handEl.appendChild(d);
-  });
-  // Player battlefield
-  const pbfEl=document.getElementById('player-ai-bf');
-  pbfEl.innerHTML='';
-  aiGame.playerBattlefield.forEach((card,i)=>{
-    const d=document.createElement('div');d.className='card-thumb'+(card.tapped?' tapped':'');
-    if(card.isToken){
-      d.className='token-chip';
-      d.innerHTML=`<div class="token-pt">${card.pt}</div><div style="font-size:8px;color:var(--muted)">${card.tokenName}</div>`;
-    } else {
-      d.innerHTML=`<img src="${imgUrl(card)}" loading="lazy">`;
-    }
-    d.onclick=()=>showAIBfActions(card,i);
-    pbfEl.appendChild(d);
-  });
-  // AI battlefield
-  const aibfEl=document.getElementById('ai-bf');
-  aibfEl.innerHTML='';
-  aiGame.aiBattlefield.forEach((card,i)=>{
-    const d=document.createElement('div');d.className='card-thumb'+(card.tapped?' tapped':'');
-    if(card.isToken){
-      d.className='token-chip';
-      d.innerHTML=`<div class="token-pt">${card.pt}</div><div style="font-size:var(--muted)">${card.tokenName}</div>`;
-    } else {
-      d.innerHTML=`<img src="${imgUrl(card)}" loading="lazy">`;
-      d.onclick=()=>previewCard(imgUrl(card));
-    }
-    aibfEl.appendChild(d);
-  });
-  // Log
-  const logEl=document.getElementById('ai-game-log');
-  logEl.innerHTML=aiGame.log.slice(-6).map(l=>`<div style="padding:2px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--text)">${l}</div>`).join('');
-  logEl.scrollTop=logEl.scrollHeight;
-  // Check win/loss
-  if(aiGame.aiLife<=0){
-    aiLog('🏆 You win! AI has 0 life.');
-    document.getElementById('ai-action-btns').style.display='none';
-    document.getElementById('ai-win-banner').style.display='block';
-    document.getElementById('ai-win-msg').textContent='🏆 You Win!';
-  } else if(aiGame.playerLife<=0){
-    aiLog('💀 AI wins! You have 0 life.');
-    document.getElementById('ai-action-btns').style.display='none';
-    document.getElementById('ai-win-banner').style.display='block';
-    document.getElementById('ai-win-msg').textContent='💀 AI Wins!';
-  }
-}
-
-function aiLog(msg){ if(aiGame){aiGame.log.push(msg);} }
-
-function showAICardActions(card,idx){
-  if(aiGame.turn!=='player') return toast('Not your turn!',true);
-  const isLand=card.type_line&&card.type_line.toLowerCase().includes('land');
-  const actions=[
-    {label:`⊕ Play${isLand?' Land':''}: ${card.name}`,fn:()=>aiPlayCard(card,idx,isLand)},
-    {label:'🔍 Preview',fn:()=>previewCard(imgUrl(card))},
-    {label:'☠ Discard',fn:()=>{aiGame.playerHand.splice(idx,1);aiGame.playerGraveyard.push(card);aiLog(`You discarded ${card.name}`);renderAIGame();}},
-  ];
-  showActionSheet(card.name,actions);
-}
-
-function aiPlayCard(card,idx,isLand){
-  if(isLand){
-    if(aiGame.playerLandsPlayed>=1){toast('Already played a land this turn!',true);return;}
-    aiGame.playerHand.splice(idx,1);
-    aiGame.playerBattlefield.push({...card,tapped:false,instanceId:uid()});
-    aiGame.playerLandsPlayed++;
-    aiLog(`You played ${card.name}`);
-  } else {
-    aiGame.playerHand.splice(idx,1);
-    aiGame.playerBattlefield.push({...card,tapped:false,instanceId:uid()});
-    aiLog(`You played ${card.name}`);
-  }
-  renderAIGame();
-}
-
-function showAIBfActions(card,idx){
-  if(aiGame.turn!=='player') return toast('Not your turn!',true);
-  showActionSheet(card.name,[
-    {label:card.tapped?'↺ Untap':'↷ Tap',fn:()=>{
-      aiGame.playerBattlefield[idx].tapped=!aiGame.playerBattlefield[idx].tapped;
-      aiLog(`You ${card.tapped?'untapped':'tapped'} ${card.name}`);renderAIGame();
-    }},
-    {label:'⚔ Attack with this',fn:()=>aiDeclareAttack(card,idx)},
-    {label:'☠ To Graveyard',fn:()=>{aiGame.playerBattlefield.splice(idx,1);aiGame.playerGraveyard.push(card);aiLog(`${card.name} → graveyard`);renderAIGame();}},
-    {label:'🔍 Preview',fn:()=>previewCard(imgUrl(card))},
-  ]);
-}
-
-function aiDeclareAttack(card,idx){
-  if(card.tapped){toast('Already tapped!',true);return;}
-  aiGame.playerBattlefield[idx].tapped=true;
-  const power=parseInt(card.power)||0;
-  aiGame.aiLife=Math.max(0,aiGame.aiLife-power);
-  aiLog(`⚔ You attacked with ${card.name} (${card.power}/${card.toughness}) — AI takes ${power} damage`);
-  renderAIGame();
-}
-
-window.aiDrawCard=()=>{
-  if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}
-  if(!aiGame.playerLibrary.length){toast('Library empty!',true);return;}
-  aiGame.playerHand.push(aiGame.playerLibrary.shift());
-  aiLog('You drew a card');
-  renderAIGame();
-};
-
-window.aiUntapAll=()=>{
-  if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}
-  aiGame.playerBattlefield=aiGame.playerBattlefield.map(c=>({...c,tapped:false}));
-  aiLog('You untapped all permanents');
-  renderAIGame();
-};
-
-window.aiEndTurn=async()=>{
-  if(aiGame.turn!=='player'){toast('Not your turn!',true);return;}
-  aiLog('--- Your turn ended ---');
-  aiGame.turn='ai';
-  aiGame.playerLandsPlayed=0;
-  renderAIGame();
-  await doAITurn();
 };
 
 async function doAITurn(){
