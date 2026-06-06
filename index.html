@@ -1944,6 +1944,19 @@ if (document.readyState === 'loading') {
 }
 // goHome is called by initProfile or confirmWelcome
 
+// Nuclear fallback: if nothing is visible after 1.5s, force a screen
+setTimeout(() => {
+  const active = document.querySelector('.screen.active');
+  if (!active) {
+    if (currentProfile && currentProfile.username && currentProfile.username !== 'Player') {
+      document.getElementById('home-username').textContent = currentProfile.username;
+      showScreen('home');
+    } else {
+      showScreen('screen-welcome');
+    }
+  }
+}, 1500);
+
 </script>
 </body>
 </html>
