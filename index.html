@@ -32,6 +32,7 @@ let activeColors=[], activeTypes=[], activeCmc='';
 let zoomCard=null, zoomMode='builder';
 
 const uid=()=>Math.random().toString(36).slice(2);
+let _deckViewIdx=0, _deckViewDeckIdx=-1;
 const imgUrl=c=>c?.image_uris?.normal||c?.card_faces?.[0]?.image_uris?.normal||'';
 const shuffle=arr=>{const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
 
@@ -256,6 +257,83 @@ window.removeFromColl=async id=>{
 };
 
 // My Decks
+// ── Deck Viewer ───────────────────────────────────────────────────────────────
+window.openDeckViewer=i=>{
+  _deckViewDeckIdx=i;
+  _deckViewIdx=0;
+  showDeckViewCard();
+  document.getElementById('overlay-deckviewer').style.display='flex';
+};
+function showDeckViewCard(){
+  const deck=currentProfile.decks[_deckViewDeckIdx];
+  const cards=deck.cards||[];
+  if(!cards.length)return;
+  const card=cards[_deckViewIdx];
+  document.getElementById('dv-img').src=imgUrl(card);
+  document.getElementById('dv-name').textContent=card.name;
+  document.getElementById('dv-type').textContent=card.type_line||'';
+  document.getElementById('dv-text').textContent=card.oracle_text||card.card_faces?.[0]?.oracle_text||'';
+  document.getElementById('dv-pt').textContent=card.power?`${card.power}/${card.toughness}`:'';
+  document.getElementById('dv-counter').textContent=`${_deckViewIdx+1} / ${cards.length}`;
+  document.getElementById('dv-prev').style.display=_deckViewIdx>0?'flex':'none';
+  document.getElementById('dv-next').style.display=_deckViewIdx<cards.length-1?'flex':'none';
+  document.getElementById('dv-deck-name').textContent=deck.name;
+  // Group count
+  const name=card.name;
+  const count=cards.filter(c=>c.name===name).length;
+  document.getElementById('dv-count').textContent=count>1?`${count}× in deck`:'1× in deck';
+  // Hide swap results
+  document.getElementById('dv-swap-area').style.display='none';
+  document.getElementById('dv-swap-inp').value='';
+}
+window.dvPrev=()=>{ if(_deckViewIdx>0){_deckViewIdx--;showDeckViewCard();} };
+window.dvNext=()=>{ if(_deckViewIdx<(currentProfile.decks[_deckViewDeckIdx]?.cards||[]).length-1){_deckViewIdx++;showDeckViewCard();} };
+
+window.dvSwapSearch=async()=>{
+  const q=document.getElementById('dv-swap-inp').value.trim();
+  if(!q)return;
+  const el=document.getElementById('dv-swap-results');
+  el.innerHTML='<span style="color:var(--muted);font-size:12px">Searching…</span>';
+  document.getElementById('dv-swap-area').style.display='block';
+  try{
+    const r=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(q)}&unique=cards&order=name`);
+    const d=await r.json();
+    el.innerHTML='';
+    (d.data||[]).slice(0,20).forEach(card=>{
+      const url=imgUrl(card);if(!url)return;
+      const wrap=document.createElement('div');wrap.className='result-wrap';
+      wrap.innerHTML=`<img src="${url}" class="result-card" style="width:70px;height:98px" loading="lazy">`;
+      wrap.querySelector('img').onclick=()=>dvConfirmSwap(card);
+      el.appendChild(wrap);
+    });
+    if(!(d.data||[]).length) el.innerHTML='<span style="color:var(--muted);font-size:12px">No results</span>';
+  }catch{el.innerHTML='<span style="color:var(--red);font-size:12px">Search failed</span>';}
+};
+
+window.dvConfirmSwap=async newCard=>{
+  const deck=currentProfile.decks[_deckViewDeckIdx];
+  const cards=deck.cards||[];
+  const oldCard=cards[_deckViewIdx];
+  if(!confirm(`Replace ${oldCard.name} with ${newCard.name}?`))return;
+  deck.cards[_deckViewIdx]={...newCard,instanceId:uid()};
+  await setDoc(doc(db,'users',currentUser.uid),currentProfile);
+  toast(`Swapped ${oldCard.name} → ${newCard.name}`);
+  showDeckViewCard();
+};
+
+window.dvRemoveCard=async()=>{
+  const deck=currentProfile.decks[_deckViewDeckIdx];
+  const cards=deck.cards||[];
+  const card=cards[_deckViewIdx];
+  if(!confirm(`Remove ${card.name} from deck?`))return;
+  deck.cards.splice(_deckViewIdx,1);
+  if(_deckViewIdx>=deck.cards.length&&_deckViewIdx>0)_deckViewIdx--;
+  await setDoc(doc(db,'users',currentUser.uid),currentProfile);
+  toast(`${card.name} removed`);
+  if(!deck.cards.length){closeOverlay('overlay-deckviewer');renderMyDecks();return;}
+  showDeckViewCard();
+};
+
 function renderMyDecks(){
   const decks=currentProfile.decks||[];
   document.getElementById('decks-count').textContent=`${decks.length} deck${decks.length!==1?'s':''}`;
@@ -264,14 +342,15 @@ function renderMyDecks(){
   decks.forEach((deck,i)=>{
     const selected=currentProfile.selectedDeckIdx===i;
     const d=document.createElement('div');d.className='deck-row'+(selected?' selected':'');
-    d.innerHTML=`<div style="flex:1">
+    d.innerHTML=`<div style="flex:1;cursor:pointer" onclick="openDeckViewer(${i})">
       <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">${deck.name}</div>
       <div style="font-size:11px;color:var(--muted)">${deck.cards?.length||0} cards · ${deck.format==='commander'?'Commander':'Standard'}${deck.aiBuilt?' · 🤖':''}</div>
+      <div style="font-size:10px;color:var(--gold-dim);margin-top:2px;letter-spacing:1px">TAP TO VIEW DECK ›</div>
     </div>
     <div style="display:flex;gap:6px">
-      <button class="btn-sm${selected?' active':''}" onclick="selectDeck(${i})">${selected?'✓ Active':'Use'}</button>
-      <button class="btn-sm" onclick="editDeck(${i})">✎</button>
-      <button class="btn-sm danger" onclick="deleteDeck(${i})">✕</button>
+      <button class="btn-sm${selected?' active':''}" onclick="event.stopPropagation();selectDeck(${i})">${selected?'✓ Active':'Use'}</button>
+      <button class="btn-sm" onclick="event.stopPropagation();editDeck(${i})">✎</button>
+      <button class="btn-sm danger" onclick="event.stopPropagation();deleteDeck(${i})">✕</button>
     </div>`;
     el.appendChild(d);
   });
@@ -1353,7 +1432,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.8</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="doLogout()">Sign Out</button>
@@ -1371,7 +1450,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- LIBRARY -->
 <div class="screen" id="screen-library">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.8</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="lib-tabs">
     <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">🔍 Search</div>
     <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">📚 Collection</div>
@@ -1429,7 +1508,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- DECK BUILDER -->
 <div class="screen" id="screen-deckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.8</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
     <input class="inp" id="deck-name-inp" placeholder="Deck name…" style="flex:1">
     <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
@@ -1459,7 +1538,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- AI DECK BUILDER -->
 <div class="screen" id="screen-aideckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.8</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">🤖 AI Deck Builder</div>
     <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
@@ -1477,7 +1556,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- ROOMS -->
 <div class="screen" id="screen-rooms">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.8</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
     <div class="rooms-grid" id="rooms-grid"></div>
@@ -1572,7 +1651,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- DRAFT ROOM -->
 <div class="screen" id="screen-draftroom">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.8</span></div>
     <div style="display:flex;gap:6px"><button class="icon-btn" onclick="goHome()">🏠</button><button class="icon-btn" onclick="leaveDraftRoom()">Leave</button></div>
   </div>
   <div style="padding:8px 14px;border-bottom:1px solid var(--border2);flex-shrink:0">
@@ -1646,7 +1725,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- WHO'S PLAYING -->
 <div class="screen" id="screen-whoplaying">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.7</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.8</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
     <div id="who-list"></div>
@@ -1741,5 +1820,49 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- TOAST -->
 <div id="toast"></div>
+
+<!-- DECK VIEWER OVERLAY -->
+<div class="overlay" id="overlay-deckviewer" style="display:none">
+  <div class="overlay-box" style="max-height:95vh;padding:14px;padding-bottom:calc(14px + var(--safe-bot))">
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div>
+        <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold)" id="dv-deck-name">Deck</div>
+        <div style="font-size:10px;color:var(--muted)" id="dv-counter">1 / 60</div>
+      </div>
+      <button class="overlay-close" onclick="closeOverlay('overlay-deckviewer');renderMyDecks()">✕</button>
+    </div>
+    <!-- Card display -->
+    <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px">
+      <!-- Nav + image -->
+      <div style="display:flex;align-items:center;gap:6px">
+        <button id="dv-prev" onclick="dvPrev()" style="display:none;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;width:36px;height:160px;font-size:22px;cursor:pointer;align-items:center;justify-content:center;">‹</button>
+        <img id="dv-img" src="" alt="" style="width:140px;height:196px;border-radius:8px;object-fit:cover;box-shadow:0 4px 16px #000a;flex-shrink:0">
+        <button id="dv-next" onclick="dvNext()" style="display:none;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;width:36px;height:160px;font-size:22px;cursor:pointer;align-items:center;justify-content:center;">›</button>
+      </div>
+      <!-- Card info -->
+      <div style="flex:1;min-width:0">
+        <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold);margin-bottom:3px" id="dv-name"></div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px" id="dv-type"></div>
+        <div style="font-size:12px;color:var(--text);line-height:1.5;margin-bottom:6px" id="dv-text"></div>
+        <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold);margin-bottom:6px" id="dv-pt"></div>
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px" id="dv-count"></div>
+      </div>
+    </div>
+    <!-- Actions -->
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <button class="btn-gold" style="flex:1;padding:10px" onclick="document.getElementById('dv-swap-area').style.display=document.getElementById('dv-swap-area').style.display==='none'?'block':'none'">⇄ Swap Card</button>
+      <button class="btn-gold" style="flex:1;padding:10px;border-color:#5a1a1a;color:var(--red)" onclick="dvRemoveCard()">✕ Remove</button>
+    </div>
+    <!-- Swap search -->
+    <div id="dv-swap-area" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input class="inp" id="dv-swap-inp" placeholder="Search replacement card…" style="flex:1" onkeydown="if(event.key==='Enter')dvSwapSearch()">
+        <button class="btn-ask" onclick="dvSwapSearch()">Search</button>
+      </div>
+      <div class="results-grid" id="dv-swap-results"></div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
