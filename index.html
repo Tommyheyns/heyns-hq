@@ -219,7 +219,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v4.8</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v4.9</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="editUsername()">✎ Name</button>
@@ -282,8 +282,16 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="results-grid" id="search-results"></div>
   </div>
   <div class="lib-view" id="lv-collection">
-    <div style="font-size:11px;color:var(--muted)">Saved Cards (<span id="coll-count">0</span>)</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Saved Cards (<span id="coll-count">0</span>)</div>
     <div class="results-grid" id="coll-saved"></div>
+    <div style="margin-top:20px;border-top:1px solid var(--border2);padding-top:16px">
+      <div style="font-family:'Cinzel',serif;font-size:12px;letter-spacing:2px;color:var(--gold);margin-bottom:6px">IMPORT DECK LIST</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Paste from Moxfield, Archidekt, or any "4x Card Name" format. Cards will be fetched from Scryfall.</div>
+      <input class="inp" id="import-deck-name" placeholder="Deck name" style="margin-bottom:8px">
+      <textarea class="inp" id="import-deck-list" placeholder="4x Blood Artist&#10;4x Viscera Seer&#10;2x Sheoldred, the Apocalypse&#10;..." style="height:120px;resize:none;font-size:12px;line-height:1.6"></textarea>
+      <button class="btn-gold" style="margin-top:8px" onclick="importDeckList()">Import & Fetch Cards</button>
+      <div id="import-result" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
+    </div>
   </div>
   <div class="lib-view" id="lv-decks">
     <div style="font-size:11px;color:var(--muted)" id="decks-count">0 decks</div>
@@ -341,14 +349,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <button class="btn-gold" id="ai-build-btn" onclick="buildAIDeck()">Build My Deck</button>
     <div id="ai-deck-result"></div>
 
-    <div style="margin-top:20px;border-top:1px solid var(--border2);padding-top:16px">
-      <div style="font-family:'Cinzel',serif;font-size:12px;letter-spacing:2px;color:var(--gold);margin-bottom:8px">IMPORT A DECK LIST</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Paste a list from Moxfield, Archidekt, or any standard format (e.g. "4x Blood Artist")</div>
-      <input class="inp" id="import-deck-name" placeholder="Deck name" style="margin-bottom:8px">
-      <textarea class="inp" id="import-deck-list" placeholder="4x Blood Artist&#10;4x Viscera Seer&#10;2x Sheoldred, the Apocalypse&#10;..." style="height:140px;resize:none;font-size:12px;line-height:1.6"></textarea>
-      <button class="btn-gold" style="margin-top:8px" onclick="importDeckList()">Import Deck</button>
-      <div id="import-result" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
-    </div>
+
   </div>
 </div>
 
@@ -1167,31 +1168,49 @@ window.importDeckList = async () => {
   const resultEl = document.getElementById('import-result');
   if (!raw) { resultEl.textContent = 'Paste a deck list first.'; return; }
 
-  // Parse lines like "4x Blood Artist" or "4 Blood Artist" or "Blood Artist x4"
+  // Parse lines like "4x Blood Artist" or "4 Blood Artist"
   const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
-  const cards = [];
-  let skipped = 0;
-
+  const parsed = []; // { count, name }
   for (const line of lines) {
-    // Skip section headers like "Sideboard", "Commander", empty lines
     if (/^(sideboard|commander|lands?|creatures?|spells?|artifacts?|enchantments?|planeswalkers?|instants?|sorceries|mainboard)$/i.test(line)) continue;
-    // Match "4x Card Name" or "4 Card Name" or "Card Name x4"
     const m = line.match(/^(\d+)[x\s]+(.+)$/i) || line.match(/^(.+)\s+x(\d+)$/i);
     if (m) {
       const count = parseInt(m[1]) || parseInt(m[2]);
-      const cardName = (m[2] || m[1]).trim().replace(/\s*\/\/.*$/, '').trim(); // strip "// back face"
-      for (let i = 0; i < count; i++) {
-        cards.push({ name: cardName, id: cardName.toLowerCase().replace(/[^a-z0-9]/g,'_') + '_' + i });
-      }
-    } else if (line.match(/^[A-Z]/)) {
-      // Plain card name, count as 1
-      cards.push({ name: line, id: line.toLowerCase().replace(/[^a-z0-9]/g,'_') });
-    } else {
-      skipped++;
+      const cardName = (m[2] || m[1]).trim().replace(/\s*\/\/.*$/, '').trim();
+      parsed.push({ count, name: cardName });
+    } else if (/^[A-Z]/.test(line)) {
+      parsed.push({ count: 1, name: line.trim() });
     }
   }
 
-  if (!cards.length) { resultEl.textContent = 'Could not parse any cards. Check the format.'; return; }
+  if (!parsed.length) { resultEl.textContent = 'Could not parse any cards. Check the format.'; return; }
+
+  resultEl.innerHTML = '<span style="color:var(--muted)">Fetching cards from Scryfall… (0/' + parsed.length + ')</span>';
+
+  const cards = [];
+  let fetched = 0;
+  let failed = [];
+
+  for (const { count, name } of parsed) {
+    try {
+      const res = await fetch('https://api.scryfall.com/cards/named?fuzzy=' + encodeURIComponent(name));
+      if (res.ok) {
+        const card = await res.json();
+        for (let i = 0; i < count; i++) cards.push(card);
+      } else {
+        failed.push(name);
+        // push stub so deck count is right
+        for (let i = 0; i < count; i++) cards.push({ name, id: name.toLowerCase().replace(/[^a-z0-9]/g,'_') + '_' + i });
+      }
+    } catch {
+      failed.push(name);
+      for (let i = 0; i < count; i++) cards.push({ name, id: name.toLowerCase().replace(/[^a-z0-9]/g,'_') + '_' + i });
+    }
+    fetched++;
+    resultEl.innerHTML = '<span style="color:var(--muted)">Fetching from Scryfall… (' + fetched + '/' + parsed.length + ')</span>';
+    // Scryfall rate limit: max 10 req/s
+    await new Promise(r => setTimeout(r, 110));
+  }
 
   const deckObj = { name, format: 'imported', cards, importedAt: Date.now() };
   if (!currentProfile.decks) currentProfile.decks = [];
@@ -1200,10 +1219,12 @@ window.importDeckList = async () => {
 
   document.getElementById('import-deck-name').value = '';
   document.getElementById('import-deck-list').value = '';
-  resultEl.innerHTML = `<span style="color:var(--green)">✓ Saved "${name}" — ${cards.length} cards${skipped ? `, ${skipped} lines skipped` : ''}</span>`;
+  const failMsg = failed.length ? ` (${failed.length} not found: ${failed.slice(0,3).join(', ')}${failed.length>3?'…':''})` : '';
+  resultEl.innerHTML = '<span style="color:var(--green)">✓ Saved "' + name + '" — ' + cards.length + ' cards' + failMsg + '</span>';
   toast('"' + name + '" imported! (' + cards.length + ' cards)');
-  setTimeout(() => { showScreen('library'); showLibTab('decks'); }, 1200);
+  setTimeout(() => { showScreen('library'); showLibTab('decks'); }, 1500);
 };
+
 
 window.saveAIDeck = async () => {
   const cards=window._aiDeckCards; const name=window._aiDeckName||'AI Deck'; const format=window._aiDeckFormat||'standard';
@@ -1975,13 +1996,14 @@ async function loadCommunityDecks() {
       const isOwn = deck.authorId === currentProfile.uid;
       const d = document.createElement('div');
       d.className = 'deck-row';
-      d.innerHTML = `<div style="flex:1">
+      d.innerHTML = `<div style="flex:1;cursor:pointer" onclick="viewCommunityDeck('${deck.id}')">
         <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--gold)">${deck.name}</div>
         <div style="font-size:11px;color:var(--muted)">${deck.cards?.length||0} cards - ${deck.format==='commander'?'Commander':'Standard'} - by ${deck.authorName}</div>
+        <div style="font-size:10px;color:var(--gold-dim);margin-top:2px">TAP TO VIEW ›</div>
       </div>
       <div style="display:flex;gap:6px">
-        <button class="btn-sm active" onclick="borrowDeck('${deck.id}')">Copy to My Decks</button>
-        ${isOwn ? `<button class="btn-sm danger" onclick="removeCommunityDeck('${deck.id}')">Remove</button>` : ''}
+        <button class="btn-sm active" onclick="event.stopPropagation();borrowDeck('${deck.id}')">Copy</button>
+        ${isOwn ? `<button class="btn-sm danger" onclick="event.stopPropagation();removeCommunityDeck('${deck.id}')">Remove</button>` : ''}
       </div>`;
       el.appendChild(d);
     });
@@ -1989,6 +2011,40 @@ async function loadCommunityDecks() {
     el.innerHTML = '<div style="color:var(--red);font-size:13px;text-align:center;padding:20px">Failed to load. Check connection.</div>';
   }
 }
+
+window.viewCommunityDeck = async (pubId) => {
+  try {
+    const snap = await getDoc(doc(db, 'community_decks', pubId));
+    if (!snap.exists()) return toast('Deck not found', true);
+    const deck = snap.data();
+    const cards = deck.cards || [];
+    // Use the deck viewer overlay with a temp deck
+    currentProfile._communityViewDeck = { name: deck.name, format: deck.format, cards };
+    _deckViewDeckIdx = '_community';
+    _deckViewIdx = 0;
+    // Patch openDeckViewer to support community view
+    const overlay = document.getElementById('overlay-deckviewer');
+    const dvName = document.getElementById('dv-name');
+    const dvType = document.getElementById('dv-type');
+    const dvText = document.getElementById('dv-text');
+    const dvImg = document.getElementById('dv-img');
+    const dvCount = document.getElementById('dv-count');
+    let idx = 0;
+    const show = (i) => {
+      const card = cards[i];
+      if (!card) return;
+      dvImg.src = card.image_uris?.normal || card.image_uris?.small || imgUrl(card) || '';
+      dvName.textContent = card.name;
+      dvType.textContent = card.type_line || '';
+      dvText.textContent = card.oracle_text || card.text || '';
+      dvCount.textContent = `${i+1} / ${cards.length}`;
+    };
+    overlay.style.display = 'flex';
+    show(0);
+    overlay.querySelector('[onclick="prevDeckCard()"]').onclick = () => { idx = Math.max(0,idx-1); show(idx); };
+    overlay.querySelector('[onclick="nextDeckCard()"]').onclick = () => { idx = Math.min(cards.length-1,idx+1); show(idx); };
+  } catch(e) { toast('Failed to load deck', true); }
+};
 
 window.borrowDeck = async (pubId) => {
   try {
