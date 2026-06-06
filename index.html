@@ -111,26 +111,57 @@ function updateFilterUI(){
   document.querySelectorAll('.cmc-btn').forEach(b=>b.classList.toggle('active',activeCmc===b.dataset.cmc));
 }
 
-window.searchCards=async(resultElId,mode)=>{
+// search state per mode
+const _searchState={};
+window.searchCards=async(resultElId,mode,page)=>{
+  page=page||1;
   const q=document.getElementById('search-inp-'+mode).value.trim();
   let query=q||'*';
   if(activeColors.length>0) query+=` color:${activeColors.join('')}`;
   if(activeTypes.length>0) query+=` type:${activeTypes.join(' type:')}`;
   if(activeCmc) query+=` cmc:${activeCmc}`;
+  _searchState[mode]={query,page,resultElId};
   const el=document.getElementById(resultElId);
-  el.innerHTML='<span style="color:var(--muted);font-size:12px">Searching…</span>';
+  if(page===1) el.innerHTML='<span style="color:var(--muted);font-size:12px">Searching…</span>';
   try{
-    const r=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&unique=cards&order=name&page=1`);
+    const r=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&unique=cards&order=name&page=${page}`);
     const d=await r.json();
-    el.innerHTML='';
-    (d.data||[]).slice(0,50).forEach(card=>{
+    if(page===1) el.innerHTML='';
+    (d.data||[]).forEach(card=>{
       const url=imgUrl(card);if(!url)return;
       const wrap=document.createElement('div');wrap.className='result-wrap';
       wrap.innerHTML=`<img src="${url}" class="result-card" loading="lazy" alt="${card.name}">`;
-      wrap.querySelector('img').onclick=()=>showCardZoom(card,mode);
+      const img=wrap.querySelector('img');
+      let lastTap=0;
+      img.onclick=e=>{
+        const now=Date.now();
+        if(now-lastTap<300){previewCard(url);}
+        else{showCardZoom(card,mode);}
+        lastTap=now;
+      };
       el.appendChild(wrap);
     });
-    if((d.data||[]).length===0) el.innerHTML='<span style="color:var(--muted);font-size:12px">No results.</span>';
+    if((d.data||[]).length===0&&page===1) el.innerHTML='<span style="color:var(--muted);font-size:12px">No results.</span>';
+    // Pagination controls
+    const pagerId='pager-'+resultElId;
+    let pager=document.getElementById(pagerId);
+    if(!pager){pager=document.createElement('div');pager.id=pagerId;pager.style.cssText='display:flex;gap:8px;align-items:center;padding:8px 0;flex-shrink:0;';el.parentNode.appendChild(pager);}
+    pager.innerHTML='';
+    if(d.has_more||page>1){
+      const info=document.createElement('span');info.style.cssText='font-size:11px;color:var(--muted);flex:1';
+      info.textContent=`Page ${page} · ${el.children.length} cards shown`;
+      pager.appendChild(info);
+      if(page>1){
+        const prev=document.createElement('button');prev.className='btn-sm';prev.textContent='← Prev';
+        prev.onclick=()=>searchCards(resultElId,mode,page-1);
+        pager.appendChild(prev);
+      }
+      if(d.has_more){
+        const next=document.createElement('button');next.className='btn-sm active';next.textContent='Next →';
+        next.onclick=()=>searchCards(resultElId,mode,page+1);
+        pager.appendChild(next);
+      }
+    }
   }catch{el.innerHTML='<span style="color:var(--red);font-size:12px">Search failed</span>';}
 };
 
@@ -441,6 +472,21 @@ function renderRoom(room,role){
   const p1=room.players?.[0],p2=room.players?.[1];
   document.getElementById('room-p1-name').textContent=p1?.username||'Waiting…';
   document.getElementById('room-p2-name').textContent=p2?.username||'Waiting…';
+  // End game notification
+  const endRequests=room.endRequests||[];
+  const banner=document.getElementById('end-game-banner');
+  if(banner){
+    if(endRequests.length>0&&!endRequests.includes(currentUser?.uid)){
+      const requester=(room.players||[]).find(p=>p.uid===endRequests[0]);
+      banner.style.display='flex';
+      document.getElementById('end-game-msg').textContent=`${requester?.username||'Player'} wants to end the game`;
+    } else if(endRequests.includes(currentUser?.uid)){
+      banner.style.display='flex';
+      document.getElementById('end-game-msg').textContent='Waiting for other player to confirm end game…';
+    } else {
+      banner.style.display='none';
+    }
+  }
   const gs=room.gameState;
   if(gs){
     document.getElementById('room-p1-life').textContent=`♥ ${gs.life?.[0]??20}`;
@@ -628,16 +674,44 @@ async function doAddToken(pi,name,pt){
   ng.battlefield[pi]=[...ng.battlefield[pi],{isToken:true,tokenName:name,pt,instanceId:uid()}];
   await updateGS(ng);
 }
-window.resetTable=async()=>{
+window.requestEndGame=async()=>{
   if(!currentRoom)return;
-  if(!confirm('Reset this table? This will clear the game and format.'))return;
-  await setDoc(doc(db,'rooms',currentRoom.id),{id:currentRoom.id,players:[],spectators:[],status:'empty',format:null,gameState:null});
-  if(roomUnsub){roomUnsub();roomUnsub=null;}
-  currentRoom=null;
-  if(currentUser)setDoc(doc(db,'online',currentUser.uid),{uid:currentUser.uid,username:currentProfile.username,at:'lobby',ts:Date.now()});
-  showScreen('rooms');loadRooms();
-  toast('Table reset!');
+  const snap=await getDoc(doc(db,'rooms',currentRoom.id));
+  if(!snap.exists())return;
+  const room=snap.data();
+  const players=room.players||[];
+  // If solo or spectator just leave
+  if(players.length<=1||(room.role==='spectator')){await doHardLeave();return;}
+  // Set end request
+  const endRequests=room.endRequests||[];
+  if(endRequests.includes(currentUser.uid)){toast('Already requested - waiting for other player');return;}
+  endRequests.push(currentUser.uid);
+  if(endRequests.length>=players.length){
+    // Both agreed - end game
+    await setDoc(doc(db,'rooms',currentRoom.id),{id:currentRoom.id,players:[],spectators:[],status:'empty',format:null,gameState:null,endRequests:[]});
+    if(roomUnsub){roomUnsub();roomUnsub=null;}currentRoom=null;
+    if(currentUser)setDoc(doc(db,'online',currentUser.uid),{uid:currentUser.uid,username:currentProfile.username,at:'lobby',ts:Date.now()});
+    showScreen('rooms');loadRooms();toast('Game ended!');
+  } else {
+    await updateDoc(doc(db,'rooms',currentRoom.id),{endRequests});
+    toast(`End game requested — waiting for ${players.filter(p=>p.uid!==currentUser.uid).map(p=>p.username).join(', ')} to confirm`);
+  }
 };
+async function doHardLeave(){
+  if(roomUnsub){roomUnsub();roomUnsub=null;}
+  if(currentRoom){
+    const snap=await getDoc(doc(db,'rooms',currentRoom.id));
+    if(snap.exists()){
+      const room=snap.data();
+      const players=(room.players||[]).filter(p=>p.uid!==currentUser.uid);
+      const spectators=(room.spectators||[]).filter(p=>p.uid!==currentUser.uid);
+      const endRequests=(room.endRequests||[]).filter(u=>u!==currentUser.uid);
+      await updateDoc(doc(db,'rooms',currentRoom.id),{players,spectators,status:players.length===0?'empty':'waiting',format:players.length===0?null:room.format,endRequests});
+    }
+    currentRoom=null;
+  }
+  if(currentUser)setDoc(doc(db,'online',currentUser.uid),{uid:currentUser.uid,username:currentProfile.username,at:'lobby',ts:Date.now()});
+}
 window.leaveRoom=async()=>{
   if(roomUnsub){roomUnsub();roomUnsub=null;}
   if(currentRoom){
@@ -1323,7 +1397,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <div style="font-size:10px;background:var(--bg4);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;color:var(--muted)" id="room-role-badge">Playing</div>
       <button class="icon-btn" onclick="goHome()">🏠</button>
       <button class="icon-btn" onclick="leaveRoom()">Leave</button>
-      <button class="icon-btn" onclick="resetTable()" style="border-color:#5a1a1a;color:var(--red)">Reset</button>
+      <button class="icon-btn" onclick="requestEndGame()" style="border-color:#5a1a1a;color:var(--red)">End Game</button>
     </div>
   </div>
   <div class="room-tabs">
@@ -1331,6 +1405,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="room-tab" data-tab="life" onclick="switchRoomTab('life')">♥ Life</div>
     <div class="room-tab" data-tab="rules" onclick="switchRoomTab('rules')">⚖ Rules</div>
     <div class="room-tab" data-tab="info" onclick="switchRoomTab('info')">ℹ Info</div>
+  </div>
+  <div id="end-game-banner" style="display:none;background:#2a0808;border-bottom:1px solid #5a1a1a;padding:10px 14px;align-items:center;justify-content:space-between;flex-shrink:0;gap:8px;">
+    <span style="font-size:12px;color:var(--red)" id="end-game-msg"></span>
+    <button class="btn-sm danger" onclick="requestEndGame()">Confirm End</button>
   </div>
   <div class="room-view active" id="rv-board">
     <div class="board-section">
