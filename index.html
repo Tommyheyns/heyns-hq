@@ -704,6 +704,29 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
+// Ensure app is visible even if Firebase is slow
+window.addEventListener('DOMContentLoaded', () => {
+  requestAnimationFrame(() => {
+    const anyActive = document.querySelector('.screen.active');
+    if (!anyActive) {
+      const saved = localStorage.getItem('heyns_profile');
+      if (saved) {
+        try {
+          const p = JSON.parse(saved);
+          if (p.username && p.username !== 'Player') {
+            document.getElementById('home-username').textContent = p.username;
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen-home').classList.add('active');
+            return;
+          }
+        } catch {}
+      }
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById('screen-welcome').classList.add('active');
+    }
+  });
+});
+
 // ── Globals ───────────────────────────────────────────────────────────────────
 let currentUser = null, currentProfile = null, currentRoom = null, roomUnsub = null, draftUnsub = null;
 let buildingDeck = [], editingDeckIdx = -1;
