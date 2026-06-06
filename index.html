@@ -273,18 +273,46 @@ window.showAuthTab=tab=>{
   document.querySelectorAll('.auth-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
 };
 window.doLogin=async()=>{
-  const email=document.getElementById('login-email').value.trim();
+  let emailOrUsername=document.getElementById('login-email').value.trim();
   const pw=document.getElementById('login-pw').value;
-  if(!email||!pw) return toast('Fill in all fields',true);
-  try{await signInWithEmailAndPassword(auth,email,pw);}catch{toast('Invalid email or password',true);}
+  if(!emailOrUsername||!pw) return toast('Fill in all fields',true);
+  
+  let email=emailOrUsername;
+  
+  // If it doesn't look like an email, treat as username - look up email in Firestore
+  if(!emailOrUsername.includes('@')){
+    try{
+      const {collection,query,where,getDocs}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+      const q=query(collection(db,'users'),where('username','==',emailOrUsername));
+      const snap=await getDocs(q);
+      if(snap.empty){ toast('Username not found',true); return; }
+      email=snap.docs[0].data().email;
+    }catch(e){ toast('Error looking up username: '+e.message,true); return; }
+  }
+  
+  try{
+    await signInWithEmailAndPassword(auth,email,pw);
+  }catch(e){
+    toast('Incorrect password or email',true);
+  }
 };
 window.doForgotPassword=async()=>{
-  const email=document.getElementById('login-email').value.trim();
-  if(!email) return toast('Enter your email first',true);
+  let emailOrUsername=document.getElementById('login-email').value.trim();
+  if(!emailOrUsername) return toast('Enter your email or username first',true);
+  let email=emailOrUsername;
+  if(!emailOrUsername.includes('@')){
+    try{
+      const {collection,query,where,getDocs}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+      const q=query(collection(db,'users'),where('username','==',emailOrUsername));
+      const snap=await getDocs(q);
+      if(snap.empty){ toast('Username not found',true); return; }
+      email=snap.docs[0].data().email;
+    }catch(e){ toast('Error: '+e.message,true); return; }
+  }
   try{
     const {sendPasswordResetEmail}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     await sendPasswordResetEmail(auth,email);
-    toast('Password reset email sent! Check your inbox.');
+    toast('Reset email sent to '+email+'! Check your inbox.');
   }catch(e){toast('Error: '+e.message,true);}
 };
 window.doRegister=async()=>{
@@ -292,11 +320,22 @@ window.doRegister=async()=>{
   const email=document.getElementById('reg-email').value.trim();
   const pw=document.getElementById('reg-pw').value;
   if(!username||!email||!pw) return toast('Fill in all fields',true);
+  if(username.length<3) return toast('Username must be at least 3 characters',true);
   try{
+    // Check username is unique
+    const {collection,query,where,getDocs}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    const q=query(collection(db,'users'),where('username','==',username));
+    const snap=await getDocs(q);
+    if(!snap.empty){ toast('Username already taken — try another',true); return; }
+    // Create account
     const cred=await createUserWithEmailAndPassword(auth,email,pw);
     await setDoc(doc(db,'users',cred.user.uid),{uid:cred.user.uid,username,email,decks:[],collection:[],createdAt:Date.now()});
-    toast('Account created!');
-  }catch(e){toast(e.message,true);}
+    toast('Account created! Welcome '+username+'!');
+  }catch(e){
+    if(e.code==='auth/email-already-in-use') toast('Email already registered',true);
+    else if(e.code==='auth/weak-password') toast('Password too weak — use 6+ characters',true);
+    else toast(e.message,true);
+  }
 };
 window.doLogout=async()=>{
   if(currentUser) await setDoc(doc(db,'online',currentUser.uid),{uid:currentUser.uid,username:currentProfile?.username,at:'offline',ts:Date.now()});
@@ -1779,8 +1818,8 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
       </div>
       <div id="auth-login" class="auth-form">
         <div class="auth-field">
-          <div class="auth-field-label">Email</div>
-          <input class="auth-inp" id="login-email" type="email" placeholder="your@email.com" autocomplete="email">
+          <div class="auth-field-label">Email or Username</div>
+          <input class="auth-inp" id="login-email" type="email" placeholder="Email or Username" autocomplete="email">
         </div>
         <div class="auth-field">
           <div class="auth-field-label">Password</div>
@@ -1795,7 +1834,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
           <input class="auth-inp" id="reg-username" placeholder="e.g. Tommy">
         </div>
         <div class="auth-field">
-          <div class="auth-field-label">Email</div>
+          <div class="auth-field-label">Email or Username</div>
           <input class="auth-inp" id="reg-email" type="email" placeholder="your@email.com">
         </div>
         <div class="auth-field">
@@ -1811,7 +1850,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.4</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="doLogout()">Sign Out</button>
@@ -1830,7 +1869,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- LIBRARY -->
 <div class="screen" id="screen-library">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.4</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="lib-tabs">
     <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">🔍 Search</div>
     <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">📚 Collection</div>
@@ -1888,7 +1927,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- DECK BUILDER -->
 <div class="screen" id="screen-deckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.4</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
     <input class="inp" id="deck-name-inp" placeholder="Deck name…" style="flex:1">
     <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
@@ -1918,7 +1957,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- AI DECK BUILDER -->
 <div class="screen" id="screen-aideckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.4</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">🤖 AI Deck Builder</div>
     <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
@@ -1936,7 +1975,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- ROOMS -->
 <div class="screen" id="screen-rooms">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.4</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
     <div class="rooms-grid" id="rooms-grid"></div>
@@ -2031,7 +2070,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 <!-- DRAFT ROOM -->
 <div class="screen" id="screen-draftroom">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.4</span></div>
     <div style="display:flex;gap:6px"><button class="icon-btn" onclick="goHome()">🏠</button><button class="icon-btn" onclick="leaveDraftRoom()">Leave</button></div>
   </div>
   <div style="padding:8px 14px;border-bottom:1px solid var(--border2);flex-shrink:0">
@@ -2105,7 +2144,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 <!-- WHO'S PLAYING -->
 <div class="screen" id="screen-whoplaying">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.3</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v3.4</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
     <div id="who-list"></div>
@@ -2204,7 +2243,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 <!-- AI PRACTICE TABLE -->
 <div class="screen" id="screen-aitable">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v3.3</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted)">v3.4</span></div>
     <button class="icon-btn" onclick="goHome()">🏠 Home</button>
   </div>
   <!-- Setup -->
