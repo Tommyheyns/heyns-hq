@@ -87,9 +87,35 @@ window.showScreen=name=>{
 window.goHome=()=>{
   showScreen('home');
   document.getElementById('home-username').textContent=currentProfile?.username||'';
+  // Clear any lingering room state
+  if(roomUnsub){roomUnsub();roomUnsub=null;}
+  currentRoom=null;
 };
 window.goToLibrary=()=>{showScreen('library');showLibTab('search');};
-window.goToRooms=()=>{showScreen('rooms');loadRooms();};
+window.goToRooms=async()=>{
+  showScreen('rooms');
+  // Clean up any rooms where this user is stuck
+  if(currentUser){
+    for(let i=1;i<=4;i++){
+      try{
+        const snap=await getDoc(doc(db,'rooms',`table-${i}`));
+        if(!snap.exists()) continue;
+        const room=snap.data();
+        const inRoom=(room.players||[]).some(p=>p.uid===currentUser.uid)||(room.spectators||[]).some(p=>p.uid===currentUser.uid);
+        if(inRoom){
+          const players=(room.players||[]).filter(p=>p.uid!==currentUser.uid);
+          const spectators=(room.spectators||[]).filter(p=>p.uid!==currentUser.uid);
+          if(players.length===0){
+            await setDoc(doc(db,'rooms',`table-${i}`),{id:`table-${i}`,players:[],spectators:[],status:'empty',format:null,gameState:null,endRequests:[]});
+          } else {
+            await setDoc(doc(db,'rooms',`table-${i}`),{...room,players,spectators,status:'waiting',endRequests:[]});
+          }
+        }
+      }catch{}
+    }
+  }
+  loadRooms();
+};
 window.goToWhoPlaying=()=>{showScreen('whoplaying');loadWhoPlaying();};
 
 // Library tabs
@@ -136,11 +162,16 @@ window.searchCards=async(resultElId,mode,page)=>{
       const wrap=document.createElement('div');wrap.className='result-wrap';
       wrap.innerHTML=`<img src="${url}" class="result-card" loading="lazy" alt="${card.name}">`;
       const img=wrap.querySelector('img');
+      img._card=card;
       let lastTap=0;
       img.onclick=e=>{
         const now=Date.now();
         if(now-lastTap<300){previewCard(url);}
-        else{showCardZoom(card,mode);}
+        else{
+          const allCards=Array.from(el.querySelectorAll('img')).map(i=>i._card).filter(Boolean);
+          const idx=allCards.findIndex(c=>c.id===card.id&&c.name===card.name);
+          showCardZoom(card,mode,allCards,idx>=0?idx:0);
+        }
         lastTap=now;
       };
       el.appendChild(wrap);
@@ -1108,12 +1139,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .icon-btn{background:none;border:1px solid var(--border2);color:var(--muted);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:11px;}
 .icon-btn:active{background:var(--bg3);}
 .screen-body{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
-.inp{width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:'Crimson Text',serif;outline:none;-webkit-appearance:none;}
+.inp{width:100%;background:#0a0805;border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:14px;font-family:'Crimson Text',serif;outline:none;-webkit-appearance:none;}
 .inp:focus{border-color:var(--gold-dim);}.inp::placeholder{color:var(--muted);}
 .btn-gold{width:100%;padding:12px;font-family:'Cinzel',serif;font-size:12px;letter-spacing:2px;background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:10px;cursor:pointer;}
 .btn-gold:active{background:var(--border2);}
 .btn-ask{background:var(--bg4);border:1px solid var(--gold-dim);color:var(--gold);border-radius:8px;padding:10px 14px;font-family:'Cinzel',serif;font-size:11px;cursor:pointer;white-space:nowrap;}
-.zone-label{font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:4px;}
+.zone-label{font-family:'Cinzel',serif;font-size:10px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;margin-bottom:6px;}
 /* Auth */
 #screen-auth{align-items:center;justify-content:center;padding:20px;}
 .auth-box{width:100%;max-width:360px;background:var(--bg3);border:1px solid var(--border2);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:14px;}
@@ -1138,10 +1169,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .lib-view{display:none;flex:1;overflow-y:scroll;flex-direction:column;padding:12px;gap:10px;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--border2) var(--bg2);}
 .lib-view.active{display:flex;}
 .filter-row{display:flex;gap:5px;flex-wrap:wrap;align-items:center;}
-.color-btn{width:30px;height:30px;border-radius:50%;cursor:pointer;border:2px solid transparent;font-size:13px;display:flex;align-items:center;justify-content:center;opacity:0.5;transition:all 0.15s;flex-shrink:0;}
-.color-btn.active{opacity:1;border-color:var(--gold);}
-.type-btn,.cmc-btn{padding:4px 8px;font-family:'Cinzel',serif;font-size:9px;letter-spacing:1px;background:var(--bg4);border:1px solid var(--border);color:var(--muted);border-radius:6px;cursor:pointer;}
-.type-btn.active,.cmc-btn.active{border-color:var(--gold-dim);color:var(--gold);}
+.color-btn{width:36px;height:36px;border-radius:50%;cursor:pointer;border:2px solid #2a2010;font-size:15px;display:flex;align-items:center;justify-content:center;opacity:0.6;transition:all 0.15s;flex-shrink:0;box-shadow:0 2px 6px #0005;}
+.color-btn.active{opacity:1;border-color:var(--gold);box-shadow:0 0 8px var(--gold-glow);}
+.type-btn,.cmc-btn{padding:5px 10px;font-family:'Cinzel',serif;font-size:10px;letter-spacing:1px;background:#0d0b05;border:1px solid #3a3018;color:#a09060;border-radius:6px;cursor:pointer;}
+.type-btn.active,.cmc-btn.active{border-color:var(--gold);color:var(--gold);background:#1a1508;}
 .results-grid{display:flex;flex-wrap:wrap;gap:6px;}
 .result-wrap{flex-shrink:0;position:relative;}
 .result-card{width:110px;height:154px;border-radius:6px;cursor:pointer;box-shadow:0 2px 8px #0007;display:block;}
@@ -1305,7 +1336,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ</div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="doLogout()">Sign Out</button>
@@ -1323,7 +1354,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- LIBRARY -->
 <div class="screen" id="screen-library">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="lib-tabs">
     <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">🔍 Search</div>
     <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">📚 Collection</div>
@@ -1362,7 +1393,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <input class="inp" id="search-inp-search" placeholder="Card name (optional)…" style="flex:1" onkeydown="if(event.key==='Enter')searchCards('search-results','search')">
       <button class="btn-ask" onclick="searchCards('search-results','search')">Search</button>
     </div>
-    <div class="zone-label">Results — tap to zoom, save to collection</div>
+    <div style="font-family:'Cinzel',serif;font-size:10px;letter-spacing:2px;color:var(--gold);margin-bottom:4px">RESULTS — TAP TO ZOOM · SAVE TO COLLECTION</div>
     <div class="results-grid" id="search-results"></div>
   </div>
   <div class="lib-view" id="lv-collection">
@@ -1381,7 +1412,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- DECK BUILDER -->
 <div class="screen" id="screen-deckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
     <input class="inp" id="deck-name-inp" placeholder="Deck name…" style="flex:1">
     <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
@@ -1411,7 +1442,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- AI DECK BUILDER -->
 <div class="screen" id="screen-aideckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">🤖 AI Deck Builder</div>
     <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
@@ -1429,7 +1460,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- ROOMS -->
 <div class="screen" id="screen-rooms">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
     <div class="rooms-grid" id="rooms-grid"></div>
@@ -1524,7 +1555,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- DRAFT ROOM -->
 <div class="screen" id="screen-draftroom">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div>
     <div style="display:flex;gap:6px"><button class="icon-btn" onclick="goHome()">🏠</button><button class="icon-btn" onclick="leaveDraftRoom()">Leave</button></div>
   </div>
   <div style="padding:8px 14px;border-bottom:1px solid var(--border2);flex-shrink:0">
@@ -1598,7 +1629,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- WHO'S PLAYING -->
 <div class="screen" id="screen-whoplaying">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ</div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
     <div id="who-list"></div>
