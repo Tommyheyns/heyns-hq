@@ -391,30 +391,38 @@ window.buildAIDeck=async()=>{
   const format=document.getElementById('ai-deck-format').value;
   if(!prompt)return toast('Describe your deck first!',true);
   const el=document.getElementById('ai-deck-result');
-  el.innerHTML='<div style="color:var(--muted);font-style:italic;font-size:13px">🤖 Building your deck…</div>';
+  el.innerHTML='<div style="color:var(--muted);font-style:italic;font-size:13px">🤖 Building your deck… this may take 15-20 seconds…</div>';
   document.getElementById('ai-build-btn').disabled=true;
   const cardCount=format==='commander'?99:60;
   try{
     const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,
-        system:`You are an expert MTG deck builder. Respond ONLY with JSON: {"deckName":"Name","description":"desc","cards":[{"name":"Card Name","count":4}...],"strategy":"notes"}. Build a ${cardCount}-card ${format} deck. Include lands. No extra text.`,
-        messages:[{role:'user',content:`Build: ${prompt}`}]})});
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3000,
+        system:`You are an expert Magic: The Gathering deck builder. The user wants a ${cardCount}-card ${format} deck. Respond ONLY with valid JSON, no markdown, no explanation, just the JSON object: {"deckName":"Name Here","description":"One sentence description","cards":[{"name":"Exact Card Name","count":4},{"name":"Another Card","count":2}],"strategy":"2-3 sentence strategy overview"}. Make sure the total card count adds up to exactly ${cardCount}. Use real MTG card names. Include appropriate lands.`,
+        messages:[{role:'user',content:prompt}]})});
     const data=await res.json();
-    const json=JSON.parse(data.content?.[0]?.text.replace(/```json|```/g,'').trim()||'{}');
+    if(data.error){throw new Error(data.error.message||'API error');}
+    const rawText=data.content?.[0]?.text||'';
+    const cleaned=rawText.replace(/```json|```/g,'').trim();
+    const json=JSON.parse(cleaned);
+    if(!json.cards||!json.deckName)throw new Error('Invalid response format');
     el.innerHTML=`<div class="ai-result-box">
-      <div style="font-family:'Cinzel',serif;font-size:14px;color:var(--gold);margin-bottom:4px">${json.deckName}</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${json.description}</div>
-      <div style="font-size:11px;color:var(--text);line-height:1.5;margin-bottom:10px">${json.strategy}</div>
+      <div style="font-family:'Cinzel',serif;font-size:15px;color:var(--gold);margin-bottom:6px">${json.deckName}</div>
+      <div style="font-size:13px;color:var(--text);margin-bottom:6px">${json.description||''}</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:12px">${json.strategy||''}</div>
+      <div class="zone-label">Card List (${json.cards.reduce((t,c)=>t+(c.count||1),0)} cards)</div>
       <div id="ai-card-list" style="display:flex;flex-direction:column;gap:3px;margin-bottom:12px"></div>
-      <button class="btn-gold" onclick="saveAIDeck()">✓ Save This Deck</button>
+      <button class="btn-gold" onclick="saveAIDeck()">✓ Save & Load This Deck</button>
     </div>`;
     json.cards.forEach(c=>{
       const d=document.createElement('div');d.className='deck-item';
-      d.innerHTML=`<span style="flex:1;font-size:12px">${c.count}× ${c.name}</span>`;
+      d.innerHTML=`<span style="flex:1;font-size:12px">${c.count||1}× ${c.name}</span>`;
       document.getElementById('ai-card-list').appendChild(d);
     });
     window._aiDeckJson=json;window._aiDeckFormat=format;
-  }catch{el.innerHTML='<div style="color:var(--red);font-size:13px">Failed. Try a clearer description.</div>';}
+  }catch(e){
+    console.error('AI deck error:',e);
+    el.innerHTML=`<div style="color:var(--red);font-size:13px">Failed: ${e.message||'Unknown error'}. Please try again.</div>`;
+  }
   document.getElementById('ai-build-btn').disabled=false;
 };
 window.saveAIDeck=async()=>{
@@ -1336,7 +1344,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- HOME -->
 <div class="screen" id="screen-home">
   <div class="top-bar">
-    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div>
+    <div class="top-bar-logo">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div>
     <div style="display:flex;gap:8px;align-items:center">
       <span style="font-size:11px;color:var(--muted)">👤 <span id="home-username"></span></span>
       <button class="icon-btn" onclick="doLogout()">Sign Out</button>
@@ -1354,7 +1362,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- LIBRARY -->
 <div class="screen" id="screen-library">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="lib-tabs">
     <div class="lib-tab active" data-tab="search" onclick="showLibTab('search')">🔍 Search</div>
     <div class="lib-tab" data-tab="collection" onclick="showLibTab('collection')">📚 Collection</div>
@@ -1412,7 +1420,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- DECK BUILDER -->
 <div class="screen" id="screen-deckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div style="padding:8px 10px 0;flex-shrink:0;display:flex;gap:8px;align-items:center">
     <input class="inp" id="deck-name-inp" placeholder="Deck name…" style="flex:1">
     <select class="inp" id="deck-format-sel" style="width:120px;cursor:pointer"><option value="standard">Standard 60</option><option value="commander">Commander 100</option></select>
@@ -1442,7 +1450,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- AI DECK BUILDER -->
 <div class="screen" id="screen-aideckbuilder">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div><button class="icon-btn" onclick="showScreen('library');showLibTab('decks')">← Back</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:16px;color:var(--gold);letter-spacing:2px">🤖 AI Deck Builder</div>
     <select class="inp" id="ai-deck-format"><option value="standard">Standard (60 cards)</option><option value="commander">Commander (100 cards)</option></select>
@@ -1460,7 +1468,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- ROOMS -->
 <div class="screen" id="screen-rooms">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">SELECT A TABLE</div>
     <div class="rooms-grid" id="rooms-grid"></div>
@@ -1555,7 +1563,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- DRAFT ROOM -->
 <div class="screen" id="screen-draftroom">
   <div class="top-bar">
-    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div>
+    <div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div>
     <div style="display:flex;gap:6px"><button class="icon-btn" onclick="goHome()">🏠</button><button class="icon-btn" onclick="leaveDraftRoom()">Leave</button></div>
   </div>
   <div style="padding:8px 14px;border-bottom:1px solid var(--border2);flex-shrink:0">
@@ -1629,7 +1637,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 <!-- WHO'S PLAYING -->
 <div class="screen" id="screen-whoplaying">
-  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.4</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
+  <div class="top-bar"><div class="top-bar-logo" onclick="goHome()">✦ HEYNS HQ <span style="font-size:9px;color:var(--muted);letter-spacing:1px">v1.5</span></div><button class="icon-btn" onclick="goHome()">🏠 Home</button></div>
   <div class="screen-body">
     <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--muted);letter-spacing:2px">WHO'S ONLINE</div>
     <div id="who-list"></div>
